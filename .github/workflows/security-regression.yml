@@ -46,6 +46,7 @@ jobs:
           tests/unit/test_session_logs.py
           tests/unit/test_mcp_token.py
           tests/unit/test_mcp_auth.py
+          tests/unit/test_install_macos.py
       - name: Check critical Python diagnostics
         run: >-
           python -m ruff check freecad_ai tests/unit

@@ -42,6 +42,7 @@ not currently claim a fully verified FreeCAD/Python/PySide/Qt host matrix.
 
 - [Quick installation and user guide](docs/manuals/freecad-ai-installation-user-guide-quick.html)
 - [Detailed installation and user guide](docs/manuals/freecad-ai-installation-user-guide-detailed.html)
+- [macOS installation and setup guide](docs/manuals/macos-installation-and-setup-guide-2026-09-04.html)
 - [Security remediation implementation manual](docs/manuals/security-remediation-implementation-2026-09-04.md)
 
 ## Installation
@@ -57,8 +58,18 @@ ln -s /path/to/freecad-ai ~/.local/share/FreeCAD/Mod/freecad-ai
 ### macOS
 
 ```bash
-ln -s /path/to/freecad-ai ~/Library/Application\ Support/FreeCAD/Mod/freecad-ai
+./scripts/install_macos.sh --dry-run
+./scripts/install_macos.sh
 ```
+
+The installer uses a symbolic link by default. Use `--copy` for a standalone
+copy, `--check` for a read-only verification, or `--mod-dir /absolute/path/Mod`
+when several version-specific FreeCAD directories exist. Conflicting existing
+installations are never overwritten unless `--replace` is explicit; the old
+destination is then preserved as a timestamped sibling backup. The installer
+does not launch FreeCAD or configure an AI provider. See the
+[macOS guide](docs/manuals/macos-installation-and-setup-guide-2026-09-04.html)
+for the complete procedure and recovery instructions.
 
 ### Windows
 

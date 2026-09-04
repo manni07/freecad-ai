@@ -42,3 +42,29 @@ Implementation and documentation are complete enough for review, but release rem
 - Pull request `https://github.com/manni07/freecad-ai/pull/1` targets the fork's `master`. The upstream repository `ghbalf/freecad-ai` was not modified.
 - The first GitHub security-regression run failed during collection because its pinned test-tool installation omitted PySide while two selected security tests import the UI compatibility layer. After pinning the locally verified `PySide6==6.11.2`, Ubuntu exposed a second missing prerequisite, `libEGL.so.1`; the workflow now installs the minimal `libegl1` runtime package before test tooling. Runtime dependencies remain empty because FreeCAD supplies the GUI binding in production.
 - The user explicitly authorized commit, PR, and merge. This repository integration does not resolve the runtime/release HOLDs above and does not authorize a process restart or deployment.
+
+## 2026-09-04 — macOS installer workflow
+
+- Began a new isolated TCCode/Agent Workflow v4 worktree at base `04fc3ba94d7882684369a9cd2b8a4999a39811c9` for a user-scoped macOS installer; no FreeCAD or system process was started or restarted.
+- Defined 38 subprocess behavior cases with temporary HOME/TMPDIR/PATH and a fixture-owned `uname`. The intentional pre-implementation run failed all 38 cases solely because `scripts/install_macos.sh` was absent, with no skips or harness errors after selecting the validated test interpreter.
+- Implemented the Bash 3.2 installer contract: Darwin/source gates, deterministic versioned/generic/explicit target choice, sibling-staged link/copy publication, idempotence, fail-closed conflicts, explicit collision-safe backups, rollback, spaces, and read-only dry-run/check modes.
+- Final focused evidence: `38 passed in 4.49s`, zero skips. Final complete unit regression: `1594 passed in 132.87s`, zero skips.
+- The required time-bounded `agy` review attempt was permission-blocked after 9.1 seconds and produced no review; unrestricted permissions were not enabled and no external PASS was claimed.
+- Filesystem implementation/tests are PASS. Live loading remains HOLD because no supported FreeCAD application or CLI exists on the validation host; automated structure checks are not substituted for runtime evidence.
+
+## 2026-09-04 — macOS installer final security closure
+
+- Three adversarial review cycles expanded the installer contract to include early effective-root refusal, canonical rejection of macOS system paths and symlink-parent bypasses, a per-target lock, validated sibling staging, exclusive direct `ln`/`mkdir` destination claims, and the final copy `rsync`.
+- Failure injection now proves destination-reappearance handling, correct-source link races, fresh-install cleanup independent of backup state, second-copy failure cleanup, and TERM-aware restoration without stage, partial, or lock residue.
+- Final evidence is `56 passed in 14.70s` from the root focused run, an independent `56 passed in 21.40s`, and `1612 passed in 149.15s` for the full unit suite; all three runs had zero skips.
+- The final security review is PASS at 97.4% (C1 99%, C2 98%, C3 97%, C4 97%, C5 96%). The first headless `agy` attempt was permission-blocked; a later independent architecture review could run it correctly, incorporated concrete findings, and completed the final scoped review.
+- Filesystem code and automated tests are PASS. A real-host dry run is not yet recorded here, and supported live FreeCAD loading remains HOLD. No process was started or restarted.
+
+## 2026-09-04 — macOS installer read-only host evidence correction
+
+- Subsequent authorized evidence completed the previously pending real Darwin gate: `scripts/install_macos.sh --dry-run` returned rc 0, resolved `/Users/turgay/Library/Application Support/FreeCAD/Mod/freecad-ai`, and the real profile remained `ABSENT` before and after.
+- Real `--check` returned the expected rc 1 for the absent installation and likewise preserved `ABSENT` before/after. This closes the read-only host gate only; no installation or FreeCAD process was started, and live FreeCAD loading remains HOLD.
+
+## 2026-09-04 — macOS installer pre-commit verification
+
+- The exact staged tree repeated the complete unit suite immediately before commit: `1612 passed in 145.05s`, zero skips. This supersedes the earlier timing as the final integration gate without invalidating either successful run.
