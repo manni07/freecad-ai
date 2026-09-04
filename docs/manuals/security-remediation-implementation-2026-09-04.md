@@ -642,8 +642,10 @@ clear any release/runtime HOLD.
 The first GitHub security-regression run exposed a CI-environment omission:
 two selected security tests import the UI compatibility layer, but the pinned
 test-tool installation did not provide PySide. CI now pins the locally verified
-`PySide6==6.11.2` as test tooling. The production dependency list remains empty
-because FreeCAD supplies PySide/Qt at runtime.
+`PySide6==6.11.2` as test tooling. Ubuntu then exposed the missing shared
+library `libEGL.so.1`, so the workflow installs the minimal `libegl1` runtime
+package before collecting UI-adjacent tests. The production dependency list
+remains empty because FreeCAD supplies PySide/Qt at runtime.
 
 ## Pre-integration Git state (historical)
 
