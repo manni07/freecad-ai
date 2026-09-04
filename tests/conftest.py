@@ -2,8 +2,18 @@
 
 import os
 import sys
+import tempfile
 
 import pytest
+
+# Configuration is imported while test modules are collected, before fixtures
+# can redirect its module-level paths.  Force that first resolution into a
+# process-private temporary directory so collection and un-fixtured tests can
+# never inspect or mutate the user's real FreeCAD configuration.
+_SESSION_CONFIG_DIR = tempfile.TemporaryDirectory(
+    prefix="freecad-ai-pytest-config-"
+)
+os.environ["FREECAD_AI_CONFIG_DIR"] = os.path.realpath(_SESSION_CONFIG_DIR.name)
 
 # Add project root to path so `freecad_ai` package is importable
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,20 +26,29 @@ def tmp_config_dir(tmp_path, monkeypatch):
     """Redirect all config paths to a temp directory."""
     import freecad_ai.config as config_mod
 
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-    conv_dir = tmp_path / "conversations"
-    conv_dir.mkdir()
-    skills_dir = tmp_path / "skills"
-    skills_dir.mkdir()
-    logs_dir = tmp_path / "logs"
-    logs_dir.mkdir()
-
-    monkeypatch.setattr(config_mod, "CONFIG_DIR", str(config_dir))
-    monkeypatch.setattr(config_mod, "CONFIG_FILE", str(config_dir / "config.json"))
-    monkeypatch.setattr(config_mod, "CONVERSATIONS_DIR", str(conv_dir))
-    monkeypatch.setattr(config_mod, "SKILLS_DIR", str(skills_dir))
-    monkeypatch.setattr(config_mod, "LOGS_DIR", str(logs_dir))
+    paths = {
+        "CONFIG_DIR": tmp_path / "config",
+        "CONVERSATIONS_DIR": tmp_path / "conversations",
+        "SKILLS_DIR": tmp_path / "skills",
+        "USER_TOOLS_DIR": tmp_path / "tools",
+        "HOOKS_DIR": tmp_path / "hooks",
+        "LOGS_DIR": tmp_path / "logs",
+        "BACKUPS_DIR": tmp_path / "backups",
+        "SECRETS_DIR": tmp_path / "secrets",
+    }
+    for path in paths.values():
+        path.mkdir()
+    for name, path in paths.items():
+        monkeypatch.setattr(config_mod, name, str(path))
+    monkeypatch.setattr(
+        config_mod, "CONFIG_FILE", str(paths["CONFIG_DIR"] / "config.json")
+    )
+    monkeypatch.setattr(
+        config_mod,
+        "MCP_SERVER_TOKEN_FILE",
+        str(paths["CONFIG_DIR"] / "mcp_server.token"),
+        raising=False,
+    )
 
     return tmp_path
 

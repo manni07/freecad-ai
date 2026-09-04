@@ -16,6 +16,145 @@ from freecad_ai.config import (
 )
 
 
+class TestSecretMigrationRollbackHelpers:
+    """Exercise fail-safe rollback branches without touching live configuration."""
+
+    def test_snapshot_and_restore_accept_unavailable_param_store(self):
+        import freecad_ai.config as config_mod
+
+        assert config_mod._snapshot_param_group(None) is None
+        config_mod._restore_param_group(None, {"unused": True})
+        config_mod._restore_param_group(object(), None)
+
+    def test_restore_param_group_tolerates_broken_get_set_and_remove(self):
+        import freecad_ai.config as config_mod
+
+        events = []
+
+        class BrokenGroup:
+            def GetStrings(self):
+                raise RuntimeError("unreadable strings")
+
+            def GetInts(self):
+                return ["new-int"]
+
+            def GetBools(self):
+                return ["new-bool"]
+
+            def SetString(self, key, value):
+                raise OSError("read-only strings")
+
+            def SetInt(self, key, value):
+                events.append(("set-int", key, value))
+
+            def SetBool(self, key, value):
+                events.append(("set-bool", key, value))
+
+            def RemString(self, key):
+                events.append(("remove-string", key))
+
+            def RemInt(self, key):
+                raise RuntimeError("cannot remove int")
+
+            def RemBool(self, key):
+                events.append(("remove-bool", key))
+
+        snapshot = {
+            "strings": {"old-string": "value"},
+            "ints": {"old-int": 7},
+            "bools": {"old-bool": True},
+        }
+
+        config_mod._restore_param_group(BrokenGroup(), snapshot)
+
+        assert ("set-int", "old-int", 7) in events
+        assert ("set-bool", "old-bool", True) in events
+        assert ("remove-bool", "new-bool") in events
+
+    def test_restore_config_recovers_when_candidate_cannot_be_read(
+            self, tmp_path, monkeypatch):
+        import freecad_ai.config as config_mod
+
+        config_file = tmp_path / "config.json"
+        writes = []
+        monkeypatch.setattr(config_mod, "CONFIG_FILE", str(config_file))
+        monkeypatch.setattr(
+            config_mod,
+            "open",
+            lambda *args, **kwargs: (_ for _ in ()).throw(OSError("unreadable")),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            config_mod, "atomic_write_bytes",
+            lambda path, data: writes.append((path, data)))
+
+        config_mod._restore_config_bytes(b"original")
+
+        assert writes == [(str(config_file), b"original")]
+
+    def test_restore_removes_new_candidate_but_refuses_nonregular_target(
+            self, tmp_path, monkeypatch):
+        import freecad_ai.config as config_mod
+
+        config_file = tmp_path / "config.json"
+        config_file.write_text("candidate")
+        monkeypatch.setattr(config_mod, "CONFIG_FILE", str(config_file))
+        config_mod._restore_config_bytes(None)
+        assert not config_file.exists()
+        config_mod._restore_config_bytes(None)
+        assert not config_file.exists()
+
+        outside = tmp_path / "outside.json"
+        outside.write_text("outside")
+        config_file.symlink_to(outside)
+        with pytest.raises(ValueError, match="regular file"):
+            config_mod._restore_config_bytes(None)
+        assert outside.read_text() == "outside"
+
+    def test_migration_reports_restore_and_orphan_cleanup_failures(
+            self, tmp_path, monkeypatch, capsys):
+        import freecad_ai.config as config_mod
+        from freecad_ai import secure_storage
+
+        secrets_dir = tmp_path / "secrets"
+        secrets_dir.mkdir()
+        provider_path = secrets_dir / "provider"
+        reranker_path = secrets_dir / "reranker"
+        cfg = config_mod.AppConfig()
+        cfg.provider.api_key = "provider-literal"
+        cfg.rerank_llm_api_key = "reranker-literal"
+
+        def migrate(value, _directory, stem):
+            path = provider_path if stem.startswith("provider") else reranker_path
+            return f"file:{path}"
+
+        real_lstat = config_mod.os.lstat
+
+        def cleanup_lstat(path):
+            if path == str(reranker_path):
+                raise OSError("cleanup denied")
+            return real_lstat(path)
+
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", str(secrets_dir))
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: None)
+        monkeypatch.setattr(secure_storage, "migrate_literal_secret", migrate)
+        monkeypatch.setattr(
+            secure_storage, "atomic_write_json",
+            lambda *args: (_ for _ in ()).throw(OSError("candidate failed")))
+        monkeypatch.setattr(
+            config_mod, "_restore_config_bytes",
+            lambda _original: (_ for _ in ()).throw(OSError("restore failed")))
+        monkeypatch.setattr(config_mod.os, "lstat", cleanup_lstat)
+
+        result = config_mod._migrate_config_secrets(cfg, b"original")
+
+        assert result is cfg
+        warning = capsys.readouterr().err
+        assert "previous configuration was retained" in warning
+        assert "restore failed" in warning
+        assert "cleanup denied" in warning
+
+
 class TestProviderConfig:
     def test_defaults(self):
         p = ProviderConfig()
@@ -172,6 +311,317 @@ class TestAppConfig:
         # The main model's params are untouched by the reranker namespace.
         assert c2.model_params == {"main-model": {"temperature": 0.8}}
 
+    def test_session_log_content_defaults_metadata_and_roundtrips(self):
+        c = AppConfig()
+        assert getattr(c, "session_log_content", None) == "metadata"
+        c.session_log_content = "full"
+        assert AppConfig.from_dict(c.to_dict()).session_log_content == "full"
+
+
+class TestLiteralSecretMigration:
+    class FakeParamGroup:
+        def __init__(self, api_key):
+            self.strings = {"ApiKey": api_key}
+            self.events = []
+
+        def GetStrings(self):
+            return list(self.strings)
+
+        def GetInts(self):
+            return []
+
+        def GetBools(self):
+            return []
+
+        def GetString(self, key, default=""):
+            return self.strings.get(key, default)
+
+        def SetString(self, key, value):
+            self.events.append(("set", key, value))
+            self.strings[key] = value
+
+        def SetInt(self, key, value):
+            self.events.append(("set-int", key, value))
+
+        def SetBool(self, key, value):
+            self.events.append(("set-bool", key, value))
+
+        def RemInt(self, key):
+            self.events.append(("remove-int", key))
+
+        def RemString(self, key):
+            self.events.append(("remove", key))
+            self.strings.pop(key, None)
+
+        def RemBool(self, key):
+            self.events.append(("remove-bool", key))
+
+    @staticmethod
+    def _seed(config_mod, provider="provider-literal", reranker="reranker-literal"):
+        data = AppConfig().to_dict()
+        data["provider"]["api_key"] = provider
+        data["rerank_llm_api_key"] = reranker
+        with open(config_mod.CONFIG_FILE, "w") as stream:
+            json.dump(data, stream)
+        with open(config_mod.CONFIG_FILE, "rb") as stream:
+            return stream.read()
+
+    def test_provider_and_reranker_literals_migrate_losslessly_after_readback(
+            self, tmp_config_dir, monkeypatch):
+        import os
+
+        import freecad_ai.config as config_mod
+        secrets_dir = str(tmp_config_dir / "config" / "secrets")
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", secrets_dir, raising=False)
+        group = self.FakeParamGroup("provider-literal")
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        self._seed(config_mod)
+        with open(config_mod.CONFIG_FILE) as stream:
+            seeded = json.load(stream)
+        seeded.update({
+            "max_saved_conversations": 2,
+            "max_session_logs": 2,
+            "max_retention_age_days": 11,
+        })
+        with open(config_mod.CONFIG_FILE, "w") as stream:
+            json.dump(seeded, stream)
+        conv_dir = tmp_config_dir / "conversations"
+        log_dir = tmp_config_dir / "logs"
+        for index in range(4):
+            (conv_dir / f"keep-{index}.json").write_text("{}")
+            (log_dir / f"keep-{index}.json").write_text("{}")
+        before_conv = sorted(path.name for path in conv_dir.iterdir())
+        before_logs = sorted(path.name for path in log_dir.iterdir())
+
+        cfg = config_mod.load_config()
+        with open(config_mod.CONFIG_FILE) as stream:
+            persisted = json.load(stream)
+
+        for reference, literal in (
+            (cfg.provider.api_key, "provider-literal"),
+            (cfg.rerank_llm_api_key, "reranker-literal"),
+        ):
+            assert reference.startswith("file:")
+            path = reference.removeprefix("file:")
+            assert os.path.realpath(path) == path
+            with open(path, "rb") as stream:
+                assert stream.read() == literal.encode()
+        assert persisted["provider"]["api_key"] == cfg.provider.api_key
+        assert persisted["rerank_llm_api_key"] == cfg.rerank_llm_api_key
+        assert group.strings["ApiKey"] == cfg.provider.api_key
+        assert all("literal" not in str(event) for event in group.events)
+        assert (cfg.max_saved_conversations, cfg.max_session_logs,
+                cfg.max_retention_age_days) == (2, 2, 11)
+        assert sorted(path.name for path in conv_dir.iterdir()) == before_conv
+        assert sorted(path.name for path in log_dir.iterdir()) == before_logs
+
+    def test_migration_failure_preserves_json_and_param_literals(
+            self, tmp_config_dir, monkeypatch):
+        import importlib
+
+        import freecad_ai.config as config_mod
+        try:
+            storage = importlib.import_module("freecad_ai.secure_storage")
+        except ModuleNotFoundError:
+            pytest.fail("missing S7 storage required for S8 migration ordering")
+        secrets_dir = str(tmp_config_dir / "config" / "secrets")
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", secrets_dir, raising=False)
+        group = self.FakeParamGroup("provider-literal")
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        before = self._seed(config_mod)
+        monkeypatch.setattr(
+            storage,
+            "migrate_literal_secret",
+            lambda *args: (_ for _ in ()).throw(OSError("injected migration failure")),
+        )
+
+        cfg = config_mod.load_config()
+
+        with open(config_mod.CONFIG_FILE, "rb") as stream:
+            assert stream.read() == before
+        assert cfg.provider.api_key == "provider-literal"
+        assert cfg.rerank_llm_api_key == "reranker-literal"
+        assert group.strings["ApiKey"] == "provider-literal"
+        assert group.events == []
+
+    @pytest.mark.parametrize("failure", ["reranker", "candidate_write"])
+    def test_partial_migration_failure_removes_orphans_and_restores_old_state(
+            self, tmp_config_dir, monkeypatch, failure):
+        import importlib
+
+        import freecad_ai.config as config_mod
+        storage = importlib.import_module("freecad_ai.secure_storage")
+        secrets_dir = tmp_config_dir / "config" / "secrets"
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", str(secrets_dir), raising=False)
+        group = self.FakeParamGroup("provider-literal")
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        before = self._seed(config_mod)
+        original_migrate = storage.migrate_literal_secret
+        calls = 0
+
+        def migrate(value, directory, stem):
+            nonlocal calls
+            calls += 1
+            if failure == "reranker" and calls == 2:
+                raise OSError("injected reranker migration failure")
+            return original_migrate(value, directory, stem)
+
+        monkeypatch.setattr(storage, "migrate_literal_secret", migrate)
+        monkeypatch.setattr(
+            config_mod, "migrate_literal_secret", migrate, raising=False)
+        if failure == "candidate_write":
+            def fail_write(*args, **kwargs):
+                raise OSError("injected candidate write failure")
+            monkeypatch.setattr(storage, "atomic_write_json", fail_write)
+            monkeypatch.setattr(
+                config_mod, "atomic_write_json", fail_write, raising=False)
+
+        cfg = config_mod.load_config()
+
+        assert cfg.provider.api_key == "provider-literal"
+        assert cfg.rerank_llm_api_key == "reranker-literal"
+        with open(config_mod.CONFIG_FILE, "rb") as stream:
+            assert stream.read() == before
+        assert group.strings == {"ApiKey": "provider-literal"}
+        assert not secrets_dir.exists() or list(secrets_dir.iterdir()) == []
+
+    @pytest.mark.parametrize("readback_failure", ["mismatch", "error"])
+    def test_candidate_readback_failure_rolls_back_config_param_and_secrets(
+            self, tmp_config_dir, monkeypatch, readback_failure):
+        import freecad_ai.config as config_mod
+        secrets_dir = tmp_config_dir / "config" / "secrets"
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", str(secrets_dir), raising=False)
+        group = self.FakeParamGroup("provider-literal")
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        before = self._seed(config_mod)
+        original_load = config_mod.json.load
+        loads = 0
+
+        def injected_load(stream, *args, **kwargs):
+            nonlocal loads
+            loads += 1
+            if loads == 2:
+                if readback_failure == "error":
+                    raise OSError("injected final readback error")
+                return {"provider": {"api_key": "wrong"}}
+            return original_load(stream, *args, **kwargs)
+
+        monkeypatch.setattr(config_mod.json, "load", injected_load)
+        cfg = config_mod.load_config()
+
+        assert cfg.provider.api_key == "provider-literal"
+        assert cfg.rerank_llm_api_key == "reranker-literal"
+        with open(config_mod.CONFIG_FILE, "rb") as stream:
+            assert stream.read() == before
+        assert group.strings == {"ApiKey": "provider-literal"}
+        assert not secrets_dir.exists() or list(secrets_dir.iterdir()) == []
+
+    def test_param_store_failure_rolls_back_best_effort_old_state(
+            self, tmp_config_dir, monkeypatch):
+        import freecad_ai.config as config_mod
+
+        class FailingParam(self.FakeParamGroup):
+            def SetString(inner_self, key, value):
+                if key == "ApiKey" and value.startswith("file:"):
+                    raise OSError("injected ParamGet failure")
+                super().SetString(key, value)
+
+        secrets_dir = tmp_config_dir / "config" / "secrets"
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", str(secrets_dir), raising=False)
+        group = FailingParam("provider-literal")
+        before_param = dict(group.strings)
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        before = self._seed(config_mod)
+
+        cfg = config_mod.load_config()
+
+        assert cfg.provider.api_key == "provider-literal"
+        assert cfg.rerank_llm_api_key == "reranker-literal"
+        with open(config_mod.CONFIG_FILE, "rb") as stream:
+            assert stream.read() == before
+        assert group.strings == before_param
+        assert not secrets_dir.exists() or list(secrets_dir.iterdir()) == []
+
+    def test_param_write_occurs_only_after_candidate_final_readback(
+            self, tmp_config_dir, monkeypatch):
+        import importlib
+
+        import freecad_ai.config as config_mod
+        storage = importlib.import_module("freecad_ai.secure_storage")
+        secrets_dir = tmp_config_dir / "config" / "secrets"
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", str(secrets_dir), raising=False)
+        events = []
+        group = self.FakeParamGroup("provider-literal")
+        original_set = group.SetString
+        original_migrate = storage.migrate_literal_secret
+        original_atomic = storage.atomic_write_json
+        original_load = config_mod.json.load
+
+        def migrate(value, directory, stem):
+            result = original_migrate(value, directory, stem)
+            events.append(("secret-readback", stem))
+            return result
+
+        def atomic(path, value):
+            result = original_atomic(path, value)
+            events.append(("candidate-write", path))
+            return result
+
+        def load(stream, *args, **kwargs):
+            result = original_load(stream, *args, **kwargs)
+            events.append(("json-read", stream.name))
+            return result
+
+        def set_string(key, value):
+            if key == "ApiKey":
+                events.append(("param-api", value))
+            return original_set(key, value)
+
+        group.SetString = set_string
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        monkeypatch.setattr(storage, "migrate_literal_secret", migrate)
+        monkeypatch.setattr(
+            config_mod, "migrate_literal_secret", migrate, raising=False)
+        monkeypatch.setattr(storage, "atomic_write_json", atomic)
+        monkeypatch.setattr(config_mod, "atomic_write_json", atomic, raising=False)
+        monkeypatch.setattr(config_mod.json, "load", load)
+        self._seed(config_mod)
+
+        config_mod.load_config()
+
+        kinds = [event[0] for event in events]
+        param_index = kinds.index("param-api")
+        assert kinds[:param_index].count("secret-readback") == 2
+        assert kinds[:param_index].count("candidate-write") >= 1
+        assert kinds[:param_index].count("json-read") >= 2
+        assert events[param_index][1].startswith("file:")
+
+    def test_reference_values_and_retention_inventory_survive_load(
+            self, tmp_config_dir, monkeypatch):
+        import freecad_ai.config as config_mod
+        secrets_dir = str(tmp_config_dir / "config" / "secrets")
+        monkeypatch.setattr(config_mod, "SECRETS_DIR", secrets_dir, raising=False)
+        group = self.FakeParamGroup("file:/private/provider")
+        monkeypatch.setattr(config_mod, "_get_param_group", lambda: group)
+        self._seed(
+            config_mod,
+            provider="file:/private/provider",
+            reranker="cmd:security find-generic-password",
+        )
+        conv_dir = tmp_config_dir / "conversations"
+        logs_dir = tmp_config_dir / "logs"
+        (conv_dir / "keep.json").write_text("{}")
+        (logs_dir / "keep.json").write_text("{}")
+
+        cfg = config_mod.load_config()
+
+        assert cfg.provider.api_key == "file:/private/provider"
+        assert cfg.rerank_llm_api_key == "cmd:security find-generic-password"
+        assert cfg.max_saved_conversations == 0
+        assert cfg.max_session_logs == 0
+        assert sorted(path.name for path in conv_dir.iterdir()) == ["keep.json"]
+        assert sorted(path.name for path in logs_dir.iterdir()) == ["keep.json"]
+
 
 class TestProviderPresets:
     def test_all_presets_have_required_keys(self):
@@ -291,6 +741,81 @@ class TestSaveLoad:
 
         c = load_config()
         assert isinstance(c, AppConfig)
+
+
+class TestSecureConfigIntegration:
+    @staticmethod
+    def _redirect_all_managed_dirs(config_mod, tmp_path, monkeypatch):
+        names = (
+            "CONFIG_DIR", "CONVERSATIONS_DIR", "SKILLS_DIR", "USER_TOOLS_DIR",
+            "HOOKS_DIR", "LOGS_DIR", "BACKUPS_DIR", "SECRETS_DIR",
+        )
+        paths = {}
+        for name in names:
+            path = tmp_path / name.lower()
+            monkeypatch.setattr(config_mod, name, str(path), raising=False)
+            paths[name] = path
+        monkeypatch.setattr(
+            config_mod, "CONFIG_FILE", str(paths["CONFIG_DIR"] / "config.json"))
+        return paths
+
+    @pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX mode contract")
+    def test_ensure_dirs_hardens_every_managed_directory(
+            self, tmp_path, monkeypatch):
+        import os
+        import stat
+
+        import freecad_ai.config as config_mod
+        paths = self._redirect_all_managed_dirs(config_mod, tmp_path, monkeypatch)
+        paths["CONFIG_DIR"].mkdir(mode=0o777)
+        os.chmod(paths["CONFIG_DIR"], 0o777)
+
+        config_mod._ensure_dirs()
+
+        for path in paths.values():
+            assert stat.S_IMODE(path.stat().st_mode) == 0o700
+
+    @pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX mode contract")
+    def test_save_config_is_private_atomic_and_preserves_prior_on_failure(
+            self, tmp_path, monkeypatch):
+        import importlib
+        import os
+        import stat
+
+        import freecad_ai.config as config_mod
+        storage = importlib.import_module("freecad_ai.secure_storage")
+        paths = self._redirect_all_managed_dirs(config_mod, tmp_path, monkeypatch)
+        config_mod._ensure_dirs()
+        config_path = paths["CONFIG_DIR"] / "config.json"
+        config_path.write_bytes(b"old")
+        os.chmod(config_path, 0o666)
+        cfg = AppConfig(mode="act")
+
+        config_mod.save_config(cfg)
+
+        saved = config_path.read_bytes()
+        assert json.loads(saved)["mode"] == "act"
+        assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
+
+        def fail_atomic(*args, **kwargs):
+            raise OSError("injected config atomic failure")
+
+        monkeypatch.setattr(storage, "atomic_write_json", fail_atomic)
+        monkeypatch.setattr(config_mod, "atomic_write_json", fail_atomic, raising=False)
+        with pytest.raises(OSError, match="config atomic"):
+            config_mod.save_config(AppConfig(mode="plan"))
+        assert config_path.read_bytes() == saved
+
+    def test_save_config_rejects_symlink_target(self, tmp_path, monkeypatch):
+        import freecad_ai.config as config_mod
+        paths = self._redirect_all_managed_dirs(config_mod, tmp_path, monkeypatch)
+        paths["CONFIG_DIR"].mkdir()
+        outside = tmp_path / "outside"
+        outside.write_bytes(b"outside")
+        (paths["CONFIG_DIR"] / "config.json").symlink_to(outside)
+        with pytest.raises((OSError, ValueError)):
+            config_mod.save_config(AppConfig())
+        assert outside.read_bytes() == b"outside"
 
 
 class TestSingleton:

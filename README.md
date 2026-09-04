@@ -7,7 +7,7 @@ An AI-powered assistant workbench for FreeCAD that generates and executes Python
 ## Features
 
 - **Chat interface** — dock widget with streaming LLM responses
-- **Plan / Act modes** — review code before execution (Plan) or auto-execute (Act)
+- **Plan / Act modes** — review generated code in Plan mode; Act mode prefers bounded structured tools
 - **Tool calling** — 50 structured FreeCAD operations (Act mode) for safer, more reliable modeling
 - **Tool reranking** — optional keyword or LLM-based filter sends only the top-N most relevant tools to the LLM per turn, saving prompt tokens when many tools + MCP servers are registered
 - **Skills** — reusable instruction sets the model invokes autonomously or via `/command` (enclosure, gear, fastener holes, sketch-from-image, etc.)
@@ -23,15 +23,26 @@ An AI-powered assistant workbench for FreeCAD that generates and executes Python
 - **20 LLM providers** — Anthropic, OpenAI, Ollama, Gemini, OpenRouter, Moonshot, DeepSeek, Qwen, Groq, Mistral, Together, Fireworks, xAI, Cohere, SambaNova, MiniMax, Llama, GitHub Models, HuggingFace, Zhipu, plus any OpenAI-compatible endpoint via Custom
 - **Context-aware** — automatically includes document state (objects, properties, selection) in prompts
 - **Error self-correction** — failed code is sent back to the LLM for automatic retry (up to 3 attempts)
-- **AGENTS.md support** — project-level instructions with include directives and variable substitution
+- **AGENTS.md support** — contained project instructions with preview, fingerprinted trust, include limits, and variable substitution
 - **Dark mode** — chat widget automatically adapts to FreeCAD's light/dark theme (theme changes require FreeCAD restart)
 - **Persistent dock layout** — the chat dock remembers its position, tab siblings (e.g. tabified with the Tasks panel), and floating geometry across FreeCAD sessions
 - **Zero external dependencies** — uses only Python stdlib (`urllib`, `json`, `threading`, `ssl`)
 
 ## Requirements
 
-- FreeCAD 1.0+ (tested with 1.0.2 and 1.1.0)
+- FreeCAD 1.0+
+- Python 3.11+
 - An LLM provider (local Ollama, or an API key for a cloud provider)
+
+The machine-readable support policy is in
+[`security/supported-runtime.json`](security/supported-runtime.json). It does
+not currently claim a fully verified FreeCAD/Python/PySide/Qt host matrix.
+
+## Documentation
+
+- [Quick installation and user guide](docs/manuals/freecad-ai-installation-user-guide-quick.html)
+- [Detailed installation and user guide](docs/manuals/freecad-ai-installation-user-guide-detailed.html)
+- [Security remediation implementation manual](docs/manuals/security-remediation-implementation-2026-09-04.md)
 
 ## Installation
 
@@ -198,7 +209,7 @@ Type a request like *"Create a box 50mm x 30mm x 20mm"*. The AI generates Python
 Same workflow, but with two execution paths:
 
 - **Tool calling** (default): The LLM invokes structured tools like `create_primitive`, `boolean_operation`, `fillet_edges`, etc. These are pre-validated operations wrapped in undo transactions — safer and more reliable than raw code.
-- **Code generation** (fallback): When tools are disabled or the LLM generates code blocks instead, code executes with the same safety layers as before (static validation, subprocess sandbox, undo transactions).
+- **Code generation** (reviewed fallback): Generated code is displayed for review. Model tool access to raw Python is absent by default and requires the separate process-only **Allow AI Python** control. Enabling it requires an explicit warning confirmation, and every proposed call still receives its own review dialog. The preflight subprocess is a compatibility check, not an OS sandbox.
 
 Tool calling is enabled by default. Disable it by setting `enable_tools: false` in `<FreeCADAI dir>/config.json`.
 
@@ -241,7 +252,7 @@ Tool calling is enabled by default. Disable it by setting `enable_tools: false` 
 | `set_expression` | Bind object properties to expressions (parametric relationships) |
 | `modify_property` | Change any object property (supports relative: +10%, *1.5) |
 | `export_model` | Export to STL, STEP, or IGES |
-| `execute_code` | Fallback: run arbitrary Python |
+| `execute_code` | GUI-only, opt-in reviewed arbitrary Python; omitted from HTTP MCP |
 | `undo` | Undo last N operations, or undo until a named transaction |
 | `redo` | Redo previously undone operations |
 | `undo_history` | Show the undo/redo stack with named transactions |
@@ -263,6 +274,7 @@ Three ways to start it, differing in who owns the FreeCAD process:
 - **The toolbar** — no paths, no command line. In the **FreeCAD AI** workbench, click **MCP Server** on the toolbar (or the matching entry in the FreeCAD AI menu) to start the server inside the running FreeCAD; click again to stop it. The URL is printed to the Report view, and the address lives in **AI Settings → MCP Servers**. The button reflects the real server state, so a server started either of the ways below shows as running and can be stopped from it too.
 
   ```bash
+  # Configure your client to send: Authorization: Bearer <token-file-content>
   claude mcp add --transport http freecad http://127.0.0.1:3000/mcp
   ```
 
@@ -280,7 +292,18 @@ Three ways to start it, differing in who owns the FreeCAD process:
     'exec 3>&1 1>&2 && /path/to/FreeCAD.AppImage -c /path/to/freecad-ai/mcp_server_entry.py'
   ```
 
-> **The MCP server has no authentication.** Anything that can reach the address it is bound to can run FreeCAD tools, including arbitrary Python. On the `127.0.0.1` default that means any process on your machine. Tracked in [#59](https://github.com/ghbalf/freecad-ai/issues/59).
+> **HTTP MCP requires a Bearer token on every request.** The managed token is
+> created as `<FreeCADAI dir>/mcp_server.token`; startup reports its path but
+> never its value. A custom `MCP_TOKEN_FILE` must already exist, be a regular
+> file owned by the current user, and have restrictive permissions. Configure
+> the client with `Authorization: Bearer <token-file-content>`. HTTP omits
+> `execute_code`; STDIO retains it for compatibility.
+
+HTTP binds only to loopback or a single resolved private/link-local address;
+wildcard, public, ambiguous, mapped and unsupported scoped addresses fail
+closed. Authentication does not encrypt traffic: use HTTP on a private LAN only
+after separately accepting the same-LAN token-capture risk. Internet exposure
+is unsupported. Request rate and concurrent workers are bounded.
 
 Note that Claude Code loads MCP tools **at session start** — a server added mid-session won't appear until the next launch.
 
@@ -397,6 +420,14 @@ Use PartDesign workflow (Body -> Sketch -> Pad), not Part primitives.
 ```
 
 **Search order:** document directory → parent directories (up to 3 levels) → `<FreeCADAI dir>/AGENTS.md`
+
+Before project instructions are sent to a provider, the exact source, root,
+manifest, fingerprint and content are shown for **Trust and send**, **Ignore
+this version**, or **Cancel**. Trust applies only to that fingerprint; changed
+content is shown again. Absolute includes, traversal, symlink escape,
+non-regular files, cycles, invalid UTF-8, excessive depth, and size-limit
+violations reject the whole bundle. The approved in-memory snapshot—not a
+later disk reread—is used for the request.
 
 **Include directives** — split instructions across files:
 ```markdown

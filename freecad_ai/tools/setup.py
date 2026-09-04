@@ -10,15 +10,18 @@ from .registry import ToolRegistry
 from .freecad_tools import ALL_TOOLS
 
 
-def create_default_registry(include_mcp: bool = True, extra_tools: list | None = None) -> ToolRegistry:
+def create_default_registry(include_mcp: bool = True, extra_tools: list | None = None,
+                            exclude_names: set[str] | None = None) -> ToolRegistry:
     """Create a ToolRegistry with all built-in FreeCAD tools registered.
 
     Also loads user extension tools from USER_TOOLS_DIR, and optionally
     integrates MCP tools from connected servers.
     """
+    excluded = frozenset(exclude_names or ())
     registry = ToolRegistry()
     for tool in ALL_TOOLS:
-        registry.register(tool)
+        if tool.name not in excluded:
+            registry.register(tool)
 
     # Load user extension tools
     try:
@@ -38,7 +41,8 @@ def create_default_registry(include_mcp: bool = True, extra_tools: list | None =
             extra_dirs=extra_dirs,
         )
         for tool in user_tools:
-            registry.register(tool)
+            if tool.name not in excluded:
+                registry.register(tool)
     except Exception:
         pass  # User tools not available
 
@@ -46,13 +50,18 @@ def create_default_registry(include_mcp: bool = True, extra_tools: list | None =
         try:
             from ..mcp.manager import get_mcp_manager
             manager = get_mcp_manager()
-            manager.register_tools_into(registry)
+            mcp_registry = ToolRegistry()
+            manager.register_tools_into(mcp_registry)
+            for tool in mcp_registry.list_tools():
+                if tool.name not in excluded:
+                    registry.register(tool)
         except Exception:
             pass  # MCP not available or no servers connected
 
     # Register extra tools (e.g., optimize_iteration during optimization)
     if extra_tools:
         for tool in extra_tools:
-            registry.register(tool)
+            if tool.name not in excluded:
+                registry.register(tool)
 
     return registry

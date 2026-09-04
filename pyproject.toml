@@ -1,8 +1,22 @@
 [project]
 name = "freecad-ai"
-version = "0.1.0"
+version = "0.23.1a0"
 description = "AI assistant workbench for FreeCAD"
 requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["freecad_ai", "freecad_ai.*"]
+exclude = [
+    "hooks*",
+    "skills*",
+    "Resources*",
+    "resources*",
+    "translations*",
+    "tests*",
+    "docs*",
+    "security*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

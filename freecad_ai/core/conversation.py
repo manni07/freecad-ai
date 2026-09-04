@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..config import CONVERSATIONS_DIR, get_config, prune_oldest_files
+from ..secure_storage import atomic_write_json, ensure_private_dir
 
 
 @dataclass
@@ -418,7 +419,7 @@ class Conversation:
 
     def save(self):
         """Save conversation to disk."""
-        os.makedirs(CONVERSATIONS_DIR, exist_ok=True)
+        ensure_private_dir(CONVERSATIONS_DIR)
         path = os.path.join(CONVERSATIONS_DIR, f"{self.conversation_id}.json")
         data = {
             "conversation_id": self.conversation_id,
@@ -426,8 +427,7 @@ class Conversation:
             "model": self.model,
             "messages": self.messages,
         }
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        atomic_write_json(path, data)
         cfg = get_config()
         prune_oldest_files(
             CONVERSATIONS_DIR,

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Quick installation and first-use guide for FreeCAD AI 0.23.1-alpha.">
+  <title>FreeCAD AI 0.23.1-alpha — Quick Installation &amp; First Use</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fa;
+      --surface: #fff;
+      --text: #17212b;
+      --muted: #4c5c6c;
+      --accent: #075da8;
+      --border: #c8d1da;
+      --note: #eaf4ff;
+      --warn: #fff4d6;
+      --danger: #8a1c1c;
+      --code: #edf1f5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #11161c;
+        --surface: #182029;
+        --text: #edf3f8;
+        --muted: #bdc9d4;
+        --accent: #78bcff;
+        --border: #465564;
+        --note: #142f47;
+        --warn: #3b310f;
+        --danger: #ffaaaa;
+        --code: #222c36;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 1rem/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .skip-link { position: absolute; left: -9999px; top: 0; }
+    .skip-link:focus { left: 1rem; top: 1rem; z-index: 2; padding: .6rem; background: var(--surface); }
+    header, main, footer { width: min(70rem, calc(100% - 2rem)); margin-inline: auto; }
+    header { padding: 2.5rem 0 1rem; }
+    h1 { margin: 0 0 .4rem; font-size: clamp(2rem, 6vw, 3.25rem); line-height: 1.08; }
+    h2 { margin-top: 2.5rem; line-height: 1.2; }
+    h3 { margin-bottom: .35rem; }
+    p, li { max-width: 74ch; }
+    nav ul, .cards { display: flex; flex-wrap: wrap; gap: .65rem 1.25rem; padding: 0; }
+    nav li { list-style: none; }
+    .card, aside {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: .6rem;
+      padding: 1rem 1.15rem;
+    }
+    .cards > section { flex: 1 1 18rem; }
+    aside { margin: 1rem 0; background: var(--note); }
+    aside.warning { background: var(--warn); border-left: .35rem solid var(--danger); }
+    .warning strong { color: var(--danger); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    code { background: var(--code); padding: .08rem .25rem; border-radius: .2rem; }
+    pre {
+      margin: .75rem 0 0;
+      padding: 1rem;
+      overflow-x: auto;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: .45rem;
+      line-height: 1.45;
+    }
+    pre code { padding: 0; background: transparent; }
+    kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: .25rem; padding: .05rem .3rem; }
+    .lede { color: var(--muted); font-size: 1.1rem; }
+    .steps > li { margin-bottom: .8rem; }
+    footer { margin-top: 3rem; padding: 1.5rem 0 3rem; border-top: 1px solid var(--border); color: var(--muted); }
+    @media (max-width: 38rem) {
+      header, main, footer { width: min(100% - 1.2rem, 70rem); }
+      header { padding-top: 1.5rem; }
+      pre { font-size: .84rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header>
+    <p><strong>FreeCAD AI 0.23.1-alpha</strong></p>
+    <h1>Quick installation &amp; first use</h1>
+    <p class="lede">Install the workbench, connect an AI provider, and make a first reviewed change safely.</p>
+    <nav aria-label="Guide sections">
+      <ul>
+        <li><a href="#requirements">Prerequisites</a></li>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#configure">Configure</a></li>
+        <li><a href="#first-use">First use</a></li>
+        <li><a href="#mcp">HTTP MCP</a></li>
+        <li><a href="#troubleshooting">Troubleshoot</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <aside>
+      <strong>Alpha notice:</strong> FreeCAD AI requires FreeCAD 1.0 or newer and Python 3.11 or newer. The complete FreeCAD/Python/PySide/Qt host matrix is not yet verified; keep backups of important documents.
+    </aside>
+
+    <section id="requirements">
+      <h2>1. Prerequisites</h2>
+      <ul>
+        <li>FreeCAD 1.0+ with Python 3.11+.</li>
+        <li>This repository checked out or downloaded locally.</li>
+        <li>Either local <a href="https://ollama.com/">Ollama</a>, or an API key for a supported cloud provider.</li>
+        <li>Permission to place the add-on in FreeCAD's <code>Mod</code> directory.</li>
+      </ul>
+    </section>
+
+    <section id="install">
+      <h2>2. Install the workbench</h2>
+      <p>Replace <code>/path/to/freecad-ai</code> with this repository's absolute path. FreeCAD 1.1+ normally uses a version-scoped directory such as <code>v1.1/Mod</code>; substitute your installed version where shown.</p>
+      <div class="cards">
+        <section class="card" aria-labelledby="linux-install">
+          <h3 id="linux-install">Linux</h3>
+          <pre><code>mkdir -p ~/.local/share/FreeCAD/v1.1/Mod
+ln -s /path/to/freecad-ai \
+  ~/.local/share/FreeCAD/v1.1/Mod/freecad-ai</code></pre>
+        </section>
+        <section class="card" aria-labelledby="macos-install">
+          <h3 id="macos-install">macOS</h3>
+          <pre><code>mkdir -p "$HOME/Library/Application Support/FreeCAD/v1.1/Mod"
+ln -s /path/to/freecad-ai \
+  "$HOME/Library/Application Support/FreeCAD/v1.1/Mod/freecad-ai"</code></pre>
+        </section>
+        <section class="card" aria-labelledby="windows-install">
+          <h3 id="windows-install">Windows PowerShell</h3>
+          <pre><code>New-Item -ItemType Directory -Force `
+  "$env:APPDATA\FreeCAD\v1.1\Mod"
+New-Item -ItemType SymbolicLink `
+  -Path "$env:APPDATA\FreeCAD\v1.1\Mod\freecad-ai" `
+  -Target "C:\path\to\freecad-ai"</code></pre>
+          <p>Use an elevated shell or Windows Developer Mode for the symlink, or copy the repository to the target path.</p>
+        </section>
+      </div>
+      <p>Close and reopen FreeCAD, then select <strong>FreeCAD AI</strong> from the workbench selector.</p>
+    </section>
+
+    <section id="configure">
+      <h2>3. Configure a provider</h2>
+      <ol class="steps">
+        <li>Open <strong>Edit → Preferences → FreeCAD AI</strong>, or use the gear button in the chat panel.</li>
+        <li>Select a provider and model. For Ollama, use the local endpoint and no cloud key. For a cloud provider, enter the required API key.</li>
+        <li>Prefer a protected key file over a literal key in configuration: put the key in a user-only file, set mode <code>0600</code> on Linux/macOS, and enter <code>file:/absolute/path/to/key</code> in the API-key field.</li>
+        <li>Save, then verify the selected provider and model in the panel before sending document information.</li>
+      </ol>
+      <aside class="warning">
+        <strong>Protect credentials.</strong> Never commit keys, paste them into prompts, store them in <code>AGENTS.md</code>, or copy them into logs or screenshots. Windows ACL behavior is not yet fully verified; inspect file permissions manually.
+      </aside>
+    </section>
+
+    <section id="first-use">
+      <h2>4. Make a first reviewed change</h2>
+      <ol class="steps">
+        <li>Open a new, disposable FreeCAD document.</li>
+        <li>Start in <strong>Plan</strong> mode and prompt: <q>Create a box 50 mm × 30 mm × 20 mm, but show me the plan before changing the document.</q></li>
+        <li>Review the response. In <strong>Plan</strong> mode, generated Python is shown for review; <strong>Check</strong> is a compatibility preflight and does not prove that code is safe.</li>
+        <li>Use <strong>Act</strong> mode when you want the assistant to apply bounded structured tools. Inspect the document after every operation and use FreeCAD undo if needed.</li>
+      </ol>
+
+      <aside class="warning">
+        <strong>AI Python is powerful, not sandboxed.</strong> Raw Python is locked by default. Enable <strong>Allow AI Python</strong> only for the current FreeCAD process after reading the warning, then approve each individual code call. Approved code runs with your operating-system user privileges. Cancel if the code touches unexpected files, networking, shell commands, or documents. The control is not persisted; disarm it manually when finished.
+      </aside>
+
+      <h3>Project instructions (<code>AGENTS.md</code>)</h3>
+      <p>If an <code>AGENTS.md</code> or <code>FREECAD_AI.md</code> is found beside the document, in an allowed parent, or in the FreeCAD AI configuration directory, the app shows its source, root, manifest, fingerprint, and exact content before sending it to the provider.</p>
+      <ul>
+        <li><strong>Trust and send</strong> approves only the displayed fingerprint.</li>
+        <li><strong>Ignore this version</strong> sends no project instructions.</li>
+        <li><strong>Cancel</strong> cancels the request.</li>
+        <li>Changed content or a changed configuration-file fingerprint requires another preview.</li>
+      </ul>
+    </section>
+
+    <section id="mcp">
+      <h2>5. Optional authenticated HTTP MCP</h2>
+      <p>HTTP MCP requires a Bearer token on every request. The managed token is stored in <code>&lt;FreeCADAI dir&gt;/mcp_server.token</code>; startup reports the path, never the value. Start or stop the server only through an explicitly approved FreeCAD session.</p>
+      <p>This example reads the token from its file and passes the header through <code>curl</code>'s standard input, so the token is not exposed in the process argument list:</p>
+      <pre><code>export FREECAD_AI_MCP_URL='http://127.0.0.1:3000/mcp'
+export FREECAD_AI_MCP_TOKEN_FILE='/private/path/mcp_server.token'
+
+{ printf 'header = "Authorization: Bearer '; \
+  tr -d '\r\n' &lt; "$FREECAD_AI_MCP_TOKEN_FILE"; \
+  printf '"\n'; } | \
+curl --config - --silent --show-error \
+  -X POST "$FREECAD_AI_MCP_URL" \
+  -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'</code></pre>
+      <aside class="warning">
+        <strong>Network limits:</strong> HTTP exposes <code>run_macro</code> but never <code>execute_code</code>. Use loopback by default. Private-LAN HTTP is unencrypted and allows same-LAN token capture; Internet, public, wildcard, multicast, and unspecified-address exposure is unsupported. Do not echo the token or enable shell tracing.
+      </aside>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>6. Troubleshooting checklist</h2>
+      <ul>
+        <li><strong>Workbench missing:</strong> confirm the link/copy points directly to the repository and use the version-scoped <code>v1.x/Mod</code> directory for your FreeCAD release.</li>
+        <li><strong>Provider error:</strong> confirm provider, model, endpoint, key reference, and key-file permissions; never work around TLS verification.</li>
+        <li><strong>No response or tools:</strong> try a new chat, confirm Plan/Act selection, and check FreeCAD's Report view without sharing secrets.</li>
+        <li><strong>AI Python unavailable:</strong> it is intentionally locked by default; enable it only when reviewed raw code is genuinely required.</li>
+        <li><strong>AGENTS prompt appears:</strong> verify source, canonical root, fingerprint, and content. Cancel on anything unexpected.</li>
+        <li><strong>HTTP MCP returns 401:</strong> confirm the token file and that the client sends one Bearer header on every request. Do not put the token directly on the command line.</li>
+        <li><strong>HTTP bind rejected:</strong> use loopback or one explicitly approved private/link-local address; do not weaken the bind checks.</li>
+        <li><strong>Potential leak or unsafe action:</strong> stop issuing requests, preserve evidence without secrets, and obtain approval before stopping or restarting any process.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="more-information">
+      <h2 id="more-information">More information</h2>
+      <ul>
+        <li><a href="security-operations-2026-09-04.html">Detailed security operations manual</a></li>
+        <li><a href="../audits/security-remediation-2026-09-04.html">Security remediation report</a></li>
+        <li><a href="../../README.md">Full project README</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Applies to FreeCAD AI 0.23.1-alpha. Treat missing runtime evidence as a hold, not as a successful test.</p>
+  </footer>
+</body>
+</html>

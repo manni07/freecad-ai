@@ -15,6 +15,9 @@ import pytest
 from freecad_ai.mcp import protocol
 from freecad_ai.mcp.transport import MAX_REQUEST_BODY, HTTPServerTransport
 
+TOKEN = "test-only-token-" + "A" * 32
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+
 
 def _echo_handler(msg):
     """Answer any request with a result; stay silent for notifications."""
@@ -32,6 +35,7 @@ class _RunningServer:
 
     def __enter__(self):
         self.transport = HTTPServerTransport(host="127.0.0.1", port=0,
+                                             bearer_token=TOKEN,
                                              **self._kwargs)
         self.transport._handler = self._handler
         self.httpd = self.transport._make_server()
@@ -50,9 +54,11 @@ class _RunningServer:
 
 def _request(port, path="/mcp", method="POST", data=None, headers=None):
     """Return (status, body_bytes, headers) without raising on 4xx."""
+    request_headers = dict(AUTH)
+    request_headers.update(headers or {})
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}", data=data, method=method,
-        headers=headers or {})
+        headers=request_headers)
     try:
         resp = urllib.request.urlopen(req, timeout=5)
         return resp.status, resp.read(), resp.headers
@@ -357,7 +363,8 @@ class TestClientServerRoundTrip:
 
         with _RunningServer(handler=self._mcp_handler) as srv:
             client = StreamableHTTPClientTransport(
-                f"http://127.0.0.1:{srv.port}/mcp", connect_timeout=5)
+                f"http://127.0.0.1:{srv.port}/mcp", headers=AUTH,
+                connect_timeout=5)
             client.start()
             try:
                 init = client.send_request(
@@ -381,7 +388,8 @@ class TestClientServerRoundTrip:
 
         with _RunningServer(handler=self._mcp_handler) as srv:
             client = StreamableHTTPClientTransport(
-                f"http://127.0.0.1:{srv.port}/mcp", connect_timeout=5)
+                f"http://127.0.0.1:{srv.port}/mcp", headers=AUTH,
+                connect_timeout=5)
             client.start()
             try:
                 # Reads and closes the 202; must not raise on the empty body.
@@ -394,7 +402,8 @@ class TestClientServerRoundTrip:
 
         with _RunningServer(handler=self._mcp_handler) as srv:
             client = StreamableHTTPClientTransport(
-                f"http://127.0.0.1:{srv.port}/mcp", connect_timeout=5)
+                f"http://127.0.0.1:{srv.port}/mcp", headers=AUTH,
+                connect_timeout=5)
             client.start()
             try:
                 resp = client.send_request("initialize", {}, timeout=5)

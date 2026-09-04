@@ -1,5 +1,11 @@
 # MCP Server GUI Toggle Implementation Plan
 
+> Historical implementation plan. Security remediation dated 2026-09-04
+> supersedes all unauthenticated/free-bind instructions in this document. The
+> current HTTP server requires Bearer authentication, private single-address
+> binding and bounded rate/concurrency, and never exposes `execute_code`. See
+> `docs/audits/security-remediation-2026-09-04.html`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a checkable **MCP Server** command to the FreeCAD AI toolbar and menu that starts and stops the HTTP/SSE server inside the running FreeCAD, reporting the true state even when the server was started from the command line.

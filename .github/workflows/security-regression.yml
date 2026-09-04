@@ -1,0 +1,65 @@
+name: Security regression
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-security-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install pinned test tooling
+        run: >-
+          python -m pip install
+          pytest==9.1.1
+          ruff==0.16.6
+          bandit==1.9.4
+          pip-audit==2.10.1
+      - name: Run deterministic security unit slices
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          python -m pytest -q -p no:cacheprovider -o addopts=''
+          tests/unit/test_release_metadata.py
+          tests/unit/test_runtime_inventory.py
+          tests/unit/test_llm_tls.py
+          tests/unit/test_executor.py
+          tests/unit/test_code_execution_access.py
+          tests/unit/test_agents_md.py
+          tests/unit/test_project_instruction_trust.py
+          tests/unit/test_secure_storage.py
+          tests/unit/test_session_logs.py
+          tests/unit/test_mcp_token.py
+          tests/unit/test_mcp_auth.py
+      - name: Check critical Python diagnostics
+        run: >-
+          python -m ruff check freecad_ai tests/unit
+          --select E9,F63,F7,F82
+      - name: Audit declared PyPI runtime dependency set
+        shell: bash
+        run: |
+          # Zero declared PyPI dependencies says nothing about FreeCAD, PySide,
+          # or Qt: those host-provided components are out of scope here.
+          python - <<'PY'
+          import pathlib
+          import tomllib
+
+          with pathlib.Path("pyproject.toml").open("rb") as stream:
+              project = tomllib.load(stream)["project"]
+          assert project["dependencies"] == []
+          PY
+          requirement_file="$(mktemp)"
+          python -m pip_audit --strict --disable-pip --no-deps --requirement "$requirement_file"
+          rm -f "$requirement_file"
+      - name: Check patch whitespace
+        run: git diff --check

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreeCAD AI Security-Handbuch</title>
+<style>body{font:16px/1.55 system-ui,sans-serif;max-width:980px;margin:auto;padding:2rem}nav,aside{background:#8882;padding:1rem}code,pre{background:#8882}pre{padding:1rem;overflow:auto}table{border-collapse:collapse;width:100%}th,td{border:1px solid #8885;padding:.5rem;text-align:left;vertical-align:top}.hold{color:#a65f00;font-weight:700}</style></head>
+<body><h1>Security-Betriebshandbuch</h1>
+<nav><a href="#python">AI-Python</a> · <a href="#agents">AGENTS.md</a> · <a href="#mcp">HTTP-MCP</a> · <a href="#data">Secrets/Logs</a> · <a href="#sbom">SBOM</a> · <a href="#incident">Störung</a></nav>
+<aside><strong>Gültigkeit:</strong> FreeCAD AI 0.23.1-alpha, FreeCAD ≥1.0, Python ≥3.11. Eine vollständig getestete Hostmatrix ist noch nicht freigegeben.</aside>
+
+<h2 id="python">AI-Python sicher verwenden</h2>
+<ol><li>Bevorzugen Sie strukturierte Werkzeuge.</li><li>Aktivieren Sie <em>Allow AI Python</em> nur für einen konkreten Bedarf und lesen Sie die Warnung.</li><li>Prüfen Sie bei jedem Aufruf den exakten Code. Abbrechen verändert das Dokument nicht.</li><li>Eine grüne Vorprüfung ist nur ein Kompatibilitätssignal, keine Isolation. Genehmigter Code hat Benutzerrechte.</li><li>Der Schalter wird nicht gespeichert und ist vom Dangerous Mode getrennt.</li></ol>
+
+<h2 id="agents">Projektanweisungen</h2>
+<p>Eine <code>AGENTS.md</code> oder <code>FREECAD_AI.md</code> wird vom Dokumentverzeichnis nach oben und anschließend im FreeCAD-AI-Konfigurationsverzeichnis gesucht. Prüfen Sie Vorschau, kanonische Root, Quelle, Manifest, Fingerprint und Inhalt. <em>Trust and send</em> gilt nur für exakt diesen Fingerprint; <em>Ignore</em> sendet keinen Projekttext; <em>Cancel</em> sendet nichts. Absolute Pfade, <code>..</code>, Symlink-Ausbruch, nicht reguläre/ungültige/zu große Dateien, Zyklen und zu tiefe Includes werden verworfen.</p>
+
+<h2 id="mcp">HTTP-MCP</h2>
+<p>Der Standardtoken liegt in <code>&lt;FreeCADAI dir&gt;/mcp_server.token</code> und wird privat erzeugt. Lesen Sie ihn lokal und konfigurieren Sie im Client:</p>
+<pre>Authorization: Bearer &lt;Inhalt der Token-Datei&gt;</pre>
+<p><code>MCP_TOKEN_FILE</code> darf auf eine bereits vorhandene, benutzereigene reguläre Datei mit restriktiven Rechten zeigen. Sie wird nicht verändert. Alle HTTP-Routen benötigen Authentisierung. Der Server bindet nur Loopback oder genau eine private/link-lokale numerische Adresse und begrenzt Rate/Parallelität. <code>execute_code</code> wird über HTTP nie veröffentlicht.</p>
+<aside><span class="hold">Restgefahr:</span> HTTP im privaten LAN verschlüsselt das Token nicht. Ohne separat geschützten Transport keinen LAN-Betrieb mit vertraulichen Dokumenten verwenden. Internet-Bindung ist nicht unterstützt.</aside>
+
+<h2 id="data">Secrets, Rechte und Logs</h2>
+<p>Verwaltete POSIX-Verzeichnisse/Dateien werden mit 0700/0600 gehärtet und atomar geschrieben. Literal-API-Schlüssel werden verlustfrei in private Dateien migriert; <code>file:</code> und <code>cmd:</code> bleiben explizite Benutzerfunktionen. Unter Windows ist keine vollständige ACL-Garantie belegt. Standard-Sitzungslogs speichern Toolname, Erfolg, Dauer, Turn und Fehlerklasse, aber keine Nachrichtentexte, Argumente oder Ergebnisse. Full-Logging muss bewusst aktiviert werden und bleibt trotz Redaction sensibel.</p>
+
+<h2 id="sbom">Runtime-Inventar</h2>
+<p>Der Generator muss innerhalb der tatsächlichen FreeCAD-Laufzeit ausgeführt werden:</p>
+<pre>"$FREECAD_AI_SUPPORTED_FREECADCMD" -c "import sys; from freecad_ai.runtime_inventory import main; sys.exit(main(['--output','build/freecad-ai-runtime.cdx.json']))"</pre>
+<p>Er bricht ab, wenn Add-on, FreeCAD, Python, PySide oder Qt keine sichere Version liefern. Danach das JSON gegen CycloneDX 1.5 validieren und mit einem aktuellen Scanner wie Grype oder Trivy prüfen. Ein leerer PyPI-Abhängigkeitsscan ist kein Host-Sicherheitsnachweis.</p>
+
+<h2 id="incident">Störung und Rollback</h2>
+<ul><li>Bei Token-/Bind-/TLS-/Pfadfehler nicht auf unauthentifizierte oder ungeprüfte Modi ausweichen.</li><li>Bei vermutetem Tokenabfluss Serverzugang stoppen, Tokendatei kontrolliert rotieren und Clients neu konfigurieren; Tokens nie in Tickets/Logs kopieren.</li><li>Migrierte Secret- oder Trustdateien nicht löschen. Restriktive Rechte nicht lockern.</li><li>Wenn HTTP nicht nutzbar ist, STDIO als dokumentierten Kompatibilitätspfad erwägen.</li><li>Vor Prozessstopp/-neustart den exakten Prozess bestimmen und Genehmigung einholen.</li></ul>
+<p>Audit: <a href="../audits/security-audit-2026-09-04.html">Original</a> · <a href="../audits/security-remediation-2026-09-04.html">Remediation</a></p>
+</body></html>

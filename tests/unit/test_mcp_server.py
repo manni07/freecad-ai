@@ -79,3 +79,37 @@ class TestHandleRouting:
         resp = _handle(_server(reg), {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
         names = [t["name"] for t in resp["result"]["tools"]]
         assert names == ["do_thing"]
+
+
+def test_http_omits_raw_code_but_preserves_run_macro_and_stdio_compatibility(monkeypatch):
+    """Transport policy removes only raw HTTP code, not accepted residuals."""
+    from freecad_ai.mcp import gui_server
+    from freecad_ai.tools import setup
+
+    def tool(name):
+        return ToolDefinition(name, name, [], lambda: ToolResult(True, name))
+
+    monkeypatch.setattr(setup, "ALL_TOOLS", [tool("execute_code"), tool("run_macro")])
+    monkeypatch.setattr(
+        "freecad_ai.extensions.user_tools.load_user_tools", lambda *a, **k: [])
+
+    class _Executor:
+        def set_registry(self, registry): self.registry = registry
+
+    monkeypatch.setattr(
+        "freecad_ai.tools.executor_utils.QtMainThreadToolExecutor", _Executor)
+    http_registry, _ = gui_server._default_backend()
+    http_server = _server(http_registry)
+    listed = _handle(http_server, {
+        "jsonrpc": "2.0", "id": 7, "method": "tools/list", "params": {}})
+    assert [item["name"] for item in listed["result"]["tools"]] == ["run_macro"]
+    denied = _handle(http_server, {
+        "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+        "params": {"name": "execute_code", "arguments": {}},
+    })
+    assert denied["result"]["isError"] is True
+    assert "Unknown tool" in denied["result"]["content"][0]["text"]
+
+    stdio_registry = setup.create_default_registry(include_mcp=False)
+    assert stdio_registry.get("execute_code") is not None
+    assert stdio_registry.get("run_macro") is not None

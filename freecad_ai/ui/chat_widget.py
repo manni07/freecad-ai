@@ -10,6 +10,9 @@ tool calls on the main thread, feed results back to the LLM.
 """
 
 import json
+import os
+import re
+import sys
 import time
 
 from .compat import QtWidgets, QtCore, QtGui
@@ -34,9 +37,10 @@ QTextCursor = QtGui.QTextCursor
 
 from ..config import LOGS_DIR, get_config, prune_oldest_files, save_current_config
 from ..core.conversation import Conversation
-from ..core.executor import extract_code_blocks, extract_truncated_block, execute_code
+from ..core.executor import extract_code_blocks, extract_truncated_block
 from ..core.loop_control import resolve_turn_outcome, should_continue_loop
 from ..core.input_history import InputHistory
+from ..secure_storage import atomic_write_json, redact_sensitive
 from .message_view import (
     _get_theme_colors,
     get_chat_display_stylesheet,
@@ -393,7 +397,8 @@ class _LLMWorker(QThread):
             # LLM calls would freeze the UI if dispatched to main thread).
             # Its inner tool calls dispatch to main thread via QtMainThreadToolExecutor.
             tool_result_messages = []
-            for tc in tool_calls:
+            terminal_batch = False
+            for call_index, tc in enumerate(tool_calls):
                 # Pre-tool-use hook
                 from ..hooks import fire_hook as _fire_hook
                 hook_result = _fire_hook("pre_tool_use", {
@@ -452,6 +457,38 @@ class _LLMWorker(QThread):
                         "content": result_text,
                     })
 
+                if result.get("terminal", False):
+                    terminal_batch = True
+                    skipped_text = "Error: " + translate(
+                        "ChatDockWidget",
+                        "Skipped after authorization was denied.")
+                    for skipped_tc in tool_calls[call_index + 1:]:
+                        self._tool_timeline.append({
+                            "name": skipped_tc.name,
+                            "success": False,
+                            "elapsed": 0.0,
+                            "turn": turn,
+                        })
+                        self.tool_call_finished.emit(
+                            skipped_tc.name, skipped_tc.id, False,
+                            skipped_text)
+                        if self.api_style == "anthropic":
+                            tool_result_messages.append({
+                                "role": "user",
+                                "content": [{
+                                    "type": "tool_result",
+                                    "tool_use_id": skipped_tc.id,
+                                    "content": skipped_text,
+                                }],
+                            })
+                        else:
+                            tool_result_messages.append({
+                                "role": "tool",
+                                "tool_call_id": skipped_tc.id,
+                                "content": skipped_text,
+                            })
+                    break
+
             messages.extend(tool_result_messages)
 
             # Store tool call info so the parent can update the conversation
@@ -463,6 +500,9 @@ class _LLMWorker(QThread):
                     for tc, r in zip(tool_calls, tool_result_messages)
                 ],
             })
+            if terminal_batch:
+                self.response_finished.emit(self._full_response)
+                return
             turn += 1
 
         # If a tool was interrupted mid-wait, the user already saw a tool-failure
@@ -834,6 +874,7 @@ class ChatDockWidget(QDockWidget):
         self._optimization_active = False
         self._validate_pending = False
         self._active_skill_name = ""
+        self._current_instruction_snapshot = ""
 
         # Initialize hook registry on main thread (before any worker threads)
         from ..hooks import get_hook_registry
@@ -1029,6 +1070,17 @@ class ChatDockWidget(QDockWidget):
         self._capture_btn.clicked.connect(self._cycle_capture_mode)
         header.addWidget(self._capture_btn)
 
+        # AI-proposed raw Python is a separate, process-only capability.
+        self.code_access_toggle = QtWidgets.QCheckBox(
+            translate("ChatDockWidget", "Allow AI Python"))
+        self.code_access_toggle.setToolTip(translate(
+            "ChatDockWidget",
+            "Allow the AI to propose Python for individual review. "
+            "Process-only — resets when FreeCAD exits."))
+        self.code_access_toggle.toggled.connect(
+            self._on_code_access_toggled)
+        header.addWidget(self.code_access_toggle)
+
         # Dangerous-mode session toggle
         self.danger_toggle = QtWidgets.QCheckBox(
             translate("ChatDockWidget", "⚠ Dangerous mode"))
@@ -1154,7 +1206,46 @@ class ChatDockWidget(QDockWidget):
 
         # Sync banner/toggle with current dangerous-mode state
         # (shows banner at startup if dangerous_skip_safety was hand-edited in config.json)
+        self._update_code_access_toggle()
         self._update_danger_banner()
+
+    # ── AI Python access toggle ─────────────────────────────
+
+    def _on_code_access_toggled(self, checked):
+        from ..core.code_execution_access import get_code_execution_access
+        access = get_code_execution_access()
+        if checked:
+            box = QtWidgets.QMessageBox(self)
+            box.setIcon(QtWidgets.QMessageBox.Warning)
+            box.setWindowTitle(translate(
+                "ChatDockWidget", "Allow AI-proposed Python?"))
+            box.setText(translate(
+                "ChatDockWidget",
+                "AI-proposed Python can modify the active FreeCAD document."))
+            box.setInformativeText(translate(
+                "ChatDockWidget",
+                "Every call still requires your individual review and approval. "
+                "This permission lasts only until FreeCAD exits. Continue?"))
+            box.setStandardButtons(
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            box.setDefaultButton(QtWidgets.QMessageBox.No)
+            if box.exec() != QtWidgets.QMessageBox.Yes:
+                self.code_access_toggle.blockSignals(True)
+                self.code_access_toggle.setChecked(False)
+                self.code_access_toggle.blockSignals(False)
+                return
+            access.arm()
+        else:
+            access.disarm()
+        self._update_code_access_toggle()
+
+    def _update_code_access_toggle(self):
+        from ..core.code_execution_access import get_code_execution_access
+        active = get_code_execution_access().active
+        if self.code_access_toggle.isChecked() != active:
+            self.code_access_toggle.blockSignals(True)
+            self.code_access_toggle.setChecked(active)
+            self.code_access_toggle.blockSignals(False)
 
     # ── Dangerous-mode toggle ──────────────────────────────
 
@@ -1374,6 +1465,63 @@ class ChatDockWidget(QDockWidget):
 
     # ── Actions ─────────────────────────────────────────────
 
+    def _prepare_project_instructions(self, text):
+        """Approve or ignore the exact instruction snapshot for this request."""
+        import datetime
+
+        from ..extensions.agents_md import (
+            InstructionLoadError,
+            _trusted_decision,
+            discover_instruction_bundle,
+        )
+        from .project_instructions_dialog import ProjectInstructionsDialog
+
+        try:
+            bundle = discover_instruction_bundle()
+        except InstructionLoadError as exc:
+            QtWidgets.QMessageBox.warning(
+                self,
+                translate("ChatDockWidget", "Project instructions rejected"),
+                translate(
+                    "ChatDockWidget",
+                    "Project instructions could not be loaded safely: {}"
+                ).format(str(exc)),
+            )
+            return None
+
+        if bundle is None:
+            self._current_instruction_snapshot = ""
+            return text, None
+
+        cfg = get_config()
+        trust = getattr(cfg, "project_instruction_trust", {})
+        decision = _trusted_decision(bundle, trust)
+        if decision in ("allow", "ignore"):
+            self._current_instruction_snapshot = (
+                bundle.content if decision == "allow" else "")
+            return text, bundle
+
+        dialog = ProjectInstructionsDialog(bundle, self)
+        dialog.exec()
+        decision = dialog.decision
+        if decision not in ("allow", "ignore"):
+            return None
+
+        if not isinstance(trust, dict):
+            trust = {}
+            cfg.project_instruction_trust = trust
+        trust[bundle.root] = {
+            "source": bundle.source_path,
+            "fingerprint": bundle.fingerprint,
+            "decision": decision,
+            "timestamp": datetime.datetime.now(
+                datetime.UTC).isoformat(),
+        }
+        save_current_config()
+        self._current_instruction_snapshot = (
+            bundle.content if decision == "allow" else "")
+        return text, bundle
+
     def _send_message(self):
         """Send the current input to the LLM."""
         if self._worker and self._worker.isRunning():
@@ -1386,6 +1534,11 @@ class ChatDockWidget(QDockWidget):
         text = self.input_edit.toPlainText().strip()
         if not text:
             return
+
+        prepared = self._prepare_project_instructions(text)
+        if prepared is None:
+            return
+        text, _instruction_bundle = prepared
 
         self.input_edit.clear()
         self._retry_count = 0  # Reset retries for new user message
@@ -1902,9 +2055,13 @@ class ChatDockWidget(QDockWidget):
 
     def _continue_send(self):
         """Continue the send flow after optional compaction."""
+        instruction_snapshot = self._current_instruction_snapshot
+        from ..core.code_execution_access import get_code_execution_access
         from ..core.system_prompt import build_system_prompt
         mode = "plan" if self.mode_combo.currentIndex() == 0 else "act"
         cfg = get_config()
+        code_tool_enabled = get_code_execution_access().active
+        exclude_names = set() if code_tool_enabled else {"execute_code"}
 
         # Determine if we should use tools. cfg.supports_tools combines the
         # provider-wide flag with per-model detection from /api/show — so an
@@ -1943,7 +2100,9 @@ class ChatDockWidget(QDockWidget):
                 except ImportError:
                     pass
 
-            self._tool_registry = create_default_registry(include_mcp=True, extra_tools=extra_tools)
+            self._tool_registry = create_default_registry(
+                include_mcp=True, extra_tools=extra_tools,
+                exclude_names=exclude_names)
 
             # Update executor registry if optimization active
             if self._optimization_active and extra_tools:
@@ -1967,8 +2126,14 @@ class ChatDockWidget(QDockWidget):
             if cfg.rerank_method in ("keyword", "llm"):
                 user_text = _extract_latest_user_text(self.conversation)
                 pairs = self._tool_registry.list_name_description_pairs()
+                present_names = {name for name, _description in pairs}
                 ranked = _run_reranker(cfg, pairs, user_text)
-                filter_names = set(ranked)
+                pinned = set(cfg.rerank_pinned_tools)
+                pinned_intersection = pinned.intersection(present_names)
+                filter_names = (
+                    set(ranked).intersection(present_names)
+                    | pinned_intersection
+                )
                 try:
                     import FreeCAD as _App
                     _App.Console.PrintMessage(
@@ -1985,11 +2150,15 @@ class ChatDockWidget(QDockWidget):
                 tools_schema = self._tool_registry.to_openai_schema(filter_names)
             system_prompt = build_system_prompt(
                 mode=mode, tools_enabled=True,
-                override=cfg.system_prompt_override)
+                override=cfg.system_prompt_override,
+                code_tool_enabled=code_tool_enabled,
+                agents_md=instruction_snapshot)
         else:
             self._tool_registry = None
             system_prompt = build_system_prompt(
-                mode=mode, override=cfg.system_prompt_override)
+                mode=mode, override=cfg.system_prompt_override,
+                code_tool_enabled=code_tool_enabled,
+                agents_md=instruction_snapshot)
 
         # Build describe_fn for non-vision LLMs
         describe_fn = None
@@ -2054,38 +2223,16 @@ class ChatDockWidget(QDockWidget):
 
     def _save_session_log(self):
         """Save the current session log as JSON for debugging."""
-        import os
         from datetime import datetime
 
-        os.makedirs(LOGS_DIR, exist_ok=True)
+        cfg = get_config()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filepath = os.path.join(LOGS_DIR, f"session_{timestamp}.json")
-
-        # Build the log from conversation messages
-        log_data = {
-            "timestamp": datetime.now().isoformat(),
-            "messages": [],
-        }
-
-        for msg in self.conversation.messages:
-            entry = {"role": msg["role"]}
-            if "content" in msg and msg["content"]:
-                entry["content"] = msg["content"]
-            if "tool_calls" in msg:
-                entry["tool_calls"] = msg["tool_calls"]
-            if "tool_call_id" in msg:
-                entry["tool_call_id"] = msg["tool_call_id"]
-            log_data["messages"].append(entry)
-
-        # Also include the last worker's tool results if available
-        if self._worker and hasattr(self._worker, "_tool_results") and self._worker._tool_results:
-            log_data["tool_trace"] = self._worker._tool_results
+        log_data = ChatDockWidget._session_log_payload(
+            self, cfg, datetime.now().isoformat())
 
         try:
-            with open(filepath, "w") as f:
-                json.dump(log_data, f, indent=2, default=str)
-
-            cfg = get_config()
+            atomic_write_json(filepath, log_data)
             prune_oldest_files(
                 LOGS_DIR,
                 lambda n: n.startswith("session_") and n.endswith(".json"),
@@ -2105,38 +2252,63 @@ class ChatDockWidget(QDockWidget):
 
     def _auto_save_log(self):
         """Auto-save tool trace after each tool-using response."""
-        import os
         from datetime import datetime
 
-        os.makedirs(LOGS_DIR, exist_ok=True)
-
         filepath = os.path.join(LOGS_DIR, "latest_session.json")
-
-        log_data = {
-            "timestamp": datetime.now().isoformat(),
-            "tool_trace": [],
-        }
-
-        if self._worker and hasattr(self._worker, "_tool_results"):
-            for turn_idx, turn in enumerate(self._worker._tool_results):
-                turn_data = {
-                    "turn": turn_idx + 1,
-                    "assistant_text": turn["assistant_text"],
-                    "tool_calls": [],
-                }
-                for tc, result in zip(turn["tool_calls"], turn["results"]):
-                    turn_data["tool_calls"].append({
-                        "name": tc["name"],
-                        "arguments": tc["arguments"],
-                        "result": result["content"],
-                    })
-                log_data["tool_trace"].append(turn_data)
-
+        cfg = get_config()
+        log_data = ChatDockWidget._session_log_payload(
+            self, cfg, datetime.now().isoformat())
         try:
-            with open(filepath, "w") as f:
-                json.dump(log_data, f, indent=2, default=str)
-        except Exception:
-            pass  # Don't disrupt the UI for auto-save failures
+            atomic_write_json(filepath, log_data)
+        except Exception as exc:
+            print(
+                f"FreeCAD AI: automatic session log could not be saved ({exc!r})",
+                file=sys.stderr,
+            )
+
+    @staticmethod
+    def _session_log_payload(dock, cfg, timestamp):
+        """Build a policy-filtered log without mutating live conversation data."""
+        timeline = getattr(getattr(dock, "_worker", None), "_tool_timeline", [])
+        result_contents = []
+        worker = getattr(dock, "_worker", None)
+        for turn in getattr(worker, "_tool_results", []) if worker else []:
+            result_contents.extend(
+                result.get("content", "") for result in turn.get("results", []))
+        metadata_trace = []
+        for index, event in enumerate(timeline):
+            entry = {
+                "name": event.get("name", ""),
+                "success": bool(event.get("success", False)),
+                "duration": event.get("duration", event.get("elapsed", 0.0)),
+                "turn": event.get("turn", 0),
+            }
+            error_class = event.get("error_class")
+            if not error_class and not entry["success"] and index < len(result_contents):
+                match = re.match(
+                    r"^Error:\s*([A-Za-z_][A-Za-z0-9_.]*)\s*:",
+                    result_contents[index],
+                )
+                if match:
+                    error_class = match.group(1)
+            if error_class:
+                entry["error_class"] = error_class
+            metadata_trace.append(entry)
+        log_data = {"timestamp": timestamp, "tool_trace": metadata_trace}
+        if getattr(cfg, "session_log_content", "metadata") != "full":
+            return log_data
+
+        log_data["messages"] = list(getattr(dock.conversation, "messages", []))
+        if worker is not None and getattr(worker, "_tool_results", None):
+            log_data["tool_trace"] = worker._tool_results
+        exact_secrets = {
+            value for value in (
+                getattr(getattr(cfg, "provider", None), "api_key", ""),
+                getattr(cfg, "rerank_llm_api_key", ""),
+            )
+            if value and not value.startswith(("file:", "cmd:"))
+        }
+        return redact_sensitive(log_data, exact_secrets=exact_secrets)
 
     # ── Streaming handlers ──────────────────────────────────
 
@@ -2436,7 +2608,51 @@ class ChatDockWidget(QDockWidget):
     @Slot(str, str)
     def _execute_tool_call(self, tool_name, arguments_json):
         """Execute a tool call on the main thread. Connected to worker's tool_exec_requested signal."""
-        if not self._tool_registry:
+        if tool_name == "execute_code":
+            from ..core.code_execution_access import get_code_execution_access
+            if not get_code_execution_access().active:
+                result = {
+                    "success": False,
+                    "output": "",
+                    "error": translate(
+                        "ChatDockWidget",
+                        "AI Python access is not enabled."),
+                    "terminal": True,
+                }
+            else:
+                try:
+                    arguments = json.loads(arguments_json)
+                except json.JSONDecodeError:
+                    arguments = {}
+                code = (arguments.get("code")
+                        if isinstance(arguments, dict) else None)
+                if not isinstance(code, str):
+                    result = {
+                        "success": False,
+                        "output": "",
+                        "error": translate(
+                            "ChatDockWidget",
+                            "Invalid execute_code request."),
+                    }
+                else:
+                    dlg = CodeReviewDialog(code, self)
+                    dlg.exec()
+                    reviewed = dlg.get_result()
+                    if reviewed is None:
+                        result = {
+                            "success": False,
+                            "output": "",
+                            "error": translate(
+                                "ChatDockWidget", "Rejected by user."),
+                            "terminal": True,
+                        }
+                    else:
+                        result = {
+                            "success": reviewed.success,
+                            "output": reviewed.stdout,
+                            "error": reviewed.stderr,
+                        }
+        elif not self._tool_registry:
             result = {"success": False, "output": "", "error": "No tool registry"}
         else:
             try:
@@ -2458,25 +2674,20 @@ class ChatDockWidget(QDockWidget):
 
     def _handle_act_mode(self, code_blocks):
         """Execute code blocks in Act mode."""
-        cfg = get_config()
-
         for code in code_blocks:
-            if cfg.auto_execute:
-                result = execute_code(code)
-            else:
-                try:
-                    import FreeCADGui as Gui
-                    parent = Gui.getMainWindow()
-                except ImportError:
-                    parent = self
-                dlg = CodeReviewDialog(code, parent)
-                dlg.exec()
-                if dlg.fix_requested and dlg.last_error_result:
-                    self._handle_execution_error(dlg.last_error_result)
-                    return
-                result = dlg.get_result()
-                if not result:
-                    continue
+            try:
+                import FreeCADGui as Gui
+                parent = Gui.getMainWindow()
+            except ImportError:
+                parent = self
+            dlg = CodeReviewDialog(code, parent)
+            dlg.exec()
+            if dlg.fix_requested and dlg.last_error_result:
+                self._handle_execution_error(dlg.last_error_result)
+                return
+            result = dlg.get_result()
+            if not result:
+                continue
 
             self._append_html(render_execution_result(
                 result.success, result.stdout, result.stderr
@@ -2524,7 +2735,10 @@ class ChatDockWidget(QDockWidget):
         from ..core.system_prompt import build_system_prompt
         from ..llm.client import should_strip_thinking
         mode = "plan" if self.mode_combo.currentIndex() == 0 else "act"
-        system_prompt = build_system_prompt(mode=mode)
+        system_prompt = build_system_prompt(
+            mode=mode,
+            agents_md=self._current_instruction_snapshot,
+        )
         cfg = get_config()
         strip = should_strip_thinking(
             cfg.provider.model, cfg.strip_thinking_history)

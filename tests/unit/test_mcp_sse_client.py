@@ -79,6 +79,9 @@ import time
 from freecad_ai.mcp import protocol
 from freecad_ai.mcp.transport import SSEClientTransport, SSEServerTransport
 
+TOKEN = "test-only-token-" + "A" * 32
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+
 
 def _fake_server_handler(msg):
     """Minimal JSON-RPC handler standing in for a real MCP server."""
@@ -104,7 +107,8 @@ class _RunningSSEServer:
     """Start the workbench's own SSE server on an ephemeral port, in a thread."""
 
     def __enter__(self):
-        self.transport = SSEServerTransport(host="127.0.0.1", port=0)
+        self.transport = SSEServerTransport(
+            host="127.0.0.1", port=0, bearer_token=TOKEN)
         self.transport._handler = _fake_server_handler
         self.httpd = self.transport._make_server()
         self.port = self.httpd.server_address[1]
@@ -121,7 +125,7 @@ class _RunningSSEServer:
 class TestSSEClientTransport:
     def test_connect_handshake_and_tool_call(self):
         with _RunningSSEServer() as srv:
-            t = SSEClientTransport(srv.url, connect_timeout=5)
+            t = SSEClientTransport(srv.url, headers=AUTH, connect_timeout=5)
             t.start()
             try:
                 init = t.send_request("initialize", {"protocolVersion": "2025-03-26"},
@@ -137,7 +141,7 @@ class TestSSEClientTransport:
 
     def test_is_alive_transitions(self):
         with _RunningSSEServer() as srv:
-            t = SSEClientTransport(srv.url, connect_timeout=5)
+            t = SSEClientTransport(srv.url, headers=AUTH, connect_timeout=5)
             assert t.is_alive is False
             t.start()
             assert t.is_alive is True
@@ -147,7 +151,7 @@ class TestSSEClientTransport:
     def test_send_request_timeout(self):
         # A server that never answers a made-up method → wait() times out.
         with _RunningSSEServer() as srv:
-            t = SSEClientTransport(srv.url, connect_timeout=5)
+            t = SSEClientTransport(srv.url, headers=AUTH, connect_timeout=5)
             t.start()
             try:
                 with pytest.raises(TimeoutError):
@@ -187,7 +191,7 @@ class TestSSEClientRobustness:
         # connecting with connect_timeout=0.5 and sitting idle >0.5s, a
         # request still round-trips (reader thread stayed alive).
         with _RunningSSEServer() as srv:
-            t = SSEClientTransport(srv.url, connect_timeout=0.5)
+            t = SSEClientTransport(srv.url, headers=AUTH, connect_timeout=0.5)
             t.start()
             try:
                 time.sleep(1.0)  # idle far beyond connect_timeout

@@ -214,8 +214,9 @@ class ToggleMCPServerCommand:
             "ToolTip": translate(
                 "ToggleMCPServerCommand",
                 "Start or stop the MCP server, letting external clients such "
-                "as Claude Code drive this FreeCAD session. The server has no "
-                "authentication; set its address in AI Settings."),
+                "as Claude Code drive this FreeCAD session. Every request "
+                "requires the installation token; set its address in AI "
+                "Settings."),
             # False = starts unticked. FreeCAD treats this as the initial
             # state, not as "may this action be checked"; True showed a ticked
             # button on a fresh session with no server running.
@@ -223,9 +224,12 @@ class ToggleMCPServerCommand:
         }
 
     def Activated(self, index=0):
+        from freecad_ai.i18n import translate
         from freecad_ai.mcp.gui_server import (
-            get_server_controller, resolve_allowed_hosts,
-            resolve_server_address)
+            get_server_controller,
+            resolve_allowed_hosts,
+            resolve_server_address,
+        )
         controller = get_server_controller()
 
         if controller.is_running():
@@ -243,14 +247,18 @@ class ToggleMCPServerCommand:
             # Settings dialog strips it. Unhandled, that leaves the button
             # mid-state behind a console traceback nothing surfaces.
             allowed_hosts = resolve_allowed_hosts(cfg)
-            url = controller.start(host, port, allowed_hosts=allowed_hosts)
+            url = controller.start(
+                host, port, allowed_hosts=allowed_hosts, cfg=cfg)
         except (OSError, ValueError) as exc:
             self._report_failure(host, port, exc)
             self._sync_action()  # a failed start must leave the button unticked
             return
 
-        App.Console.PrintMessage(
-            "FreeCAD AI: MCP server listening on %s\n" % url)
+        token_path = controller.token_file_path
+        App.Console.PrintMessage(translate(
+            "ToggleMCPServerCommand",
+            "FreeCAD AI: MCP server listening on {url}; token file: "
+            "{token_file}\n").format(url=url, token_file=token_path))
         window = Gui.getMainWindow()
         if window:
             window.statusBar().showMessage(
@@ -275,11 +283,13 @@ class ToggleMCPServerCommand:
         """
         from freecad_ai.i18n import translate
         from freecad_ai.ui.compat import QtWidgets
+        safe_error = type(exc).__name__
         message = translate(
             "ToggleMCPServerCommand",
             "Could not start the MCP server on {address}.\n\n{error}\n\n"
             "Change the address in FreeCAD AI → AI Settings → "
-            "MCP Servers.").format(address="%s:%d" % (host, port), error=exc)
+            "MCP Servers.").format(
+                address="%s:%d" % (host, port), error=safe_error)
         App.Console.PrintError("FreeCAD AI: %s\n" % message.replace("\n\n", " "))
         QtWidgets.QMessageBox.warning(
             Gui.getMainWindow(),

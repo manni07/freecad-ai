@@ -28,10 +28,16 @@ import datetime
 import json
 import os
 import shutil
+import stat
 import sys
 import time
-import time
 from dataclasses import dataclass, field, asdict
+
+from .secure_storage import (
+    atomic_write_bytes,
+    atomic_write_json,
+    harden_managed_paths,
+)
 
 
 # Marker filename inside the active config dir. Its presence signals that
@@ -306,6 +312,8 @@ USER_TOOLS_DIR = os.path.join(CONFIG_DIR, "tools")
 HOOKS_DIR = os.path.join(CONFIG_DIR, "hooks")
 LOGS_DIR = os.path.join(CONFIG_DIR, "logs")
 BACKUPS_DIR = os.path.join(CONFIG_DIR, "backups")
+SECRETS_DIR = os.path.join(CONFIG_DIR, "secrets")
+MCP_SERVER_TOKEN_FILE = os.path.join(CONFIG_DIR, "mcp_server.token")
 
 
 def prune_oldest_files(
@@ -426,6 +434,10 @@ class AppConfig:
     # deliberate opt-in to a wider policy, e.g. naming the LAN address or
     # container hostname clients actually dial. MCP_ALLOWED_HOSTS overrides.
     mcp_server_allowed_hosts: list = field(default_factory=list)
+    mcp_server_token_file: str = ""
+    mcp_server_rate_limit_per_minute: int = 60
+    mcp_server_rate_limit_burst: int = 20
+    mcp_server_max_concurrent_requests: int = 8
     user_tools_disabled: list = field(default_factory=list)
     scan_freecad_macros: bool = False
     # Dangerous mode: relaxes executor safety layers (static pattern blocking,
@@ -441,6 +453,8 @@ class AppConfig:
     # an MDI sub-window of the main window.
     use_external_editor: bool = False
     system_prompt_override: str = ""  # empty = use default; non-empty = use as-is
+    # Canonical project-root keyed, fingerprint-scoped instruction decisions.
+    project_instruction_trust: dict = field(default_factory=dict)
     vision_detected: bool | None = None   # None=not tested, True/False=probe result
     vision_override: bool | None = None   # user manual override, takes precedence
     # Tool-calling capability (Ollama /api/show "tools"). None=untested or
@@ -496,6 +510,9 @@ class AppConfig:
     # silently deletes user files — opt in via config.json.
     max_saved_conversations: int = 0
     max_session_logs: int = 0
+    # "metadata" avoids persisting prompts, tool arguments, and results.
+    # "full" is an explicit diagnostic opt-in and is recursively redacted.
+    session_log_content: str = "metadata"
     max_retention_age_days: int = 0
     # Pre-execution recovery snapshots kept in BACKUPS_DIR (#46). 0 = keep all;
     # each source document reuses one hash-tagged file (overwritten), so growth
@@ -539,9 +556,138 @@ class AppConfig:
 
 
 def _ensure_dirs():
-    """Create config directories if they don't exist."""
-    for d in (CONFIG_DIR, CONVERSATIONS_DIR, SKILLS_DIR, USER_TOOLS_DIR, HOOKS_DIR, LOGS_DIR, BACKUPS_DIR):
-        os.makedirs(d, exist_ok=True)
+    """Create and tighten managed configuration paths."""
+    directories = (
+        CONFIG_DIR, CONVERSATIONS_DIR, SKILLS_DIR, USER_TOOLS_DIR,
+        HOOKS_DIR, LOGS_DIR, BACKUPS_DIR, SECRETS_DIR,
+    )
+    marker = os.path.join(CONFIG_DIR, _ACTIVE_MARKER_FILE)
+    harden_managed_paths(directories, (CONFIG_FILE, marker))
+
+
+def _is_literal_secret(value: str) -> bool:
+    return bool(value) and not value.startswith(("file:", "cmd:"))
+
+
+def _snapshot_param_group(group):
+    if group is None:
+        return None
+    return {
+        "strings": {key: group.GetString(key, "") for key in group.GetStrings()},
+        "ints": {key: group.GetInt(key, 0) for key in group.GetInts()},
+        "bools": {key: group.GetBool(key, False) for key in group.GetBools()},
+    }
+
+
+def _restore_param_group(group, snapshot) -> None:
+    """Best-effort restoration after a failed secret migration transaction."""
+    if group is None or snapshot is None:
+        return
+    for kind, getter, setter, remover in (
+        ("strings", "GetStrings", "SetString", "RemString"),
+        ("ints", "GetInts", "SetInt", "RemInt"),
+        ("bools", "GetBools", "SetBool", "RemBool"),
+    ):
+        old = snapshot[kind]
+        try:
+            current = set(getattr(group, getter)())
+        except (AttributeError, RuntimeError):
+            current = set()
+        for key, value in old.items():
+            try:
+                getattr(group, setter)(key, value)
+            except (AttributeError, OSError, RuntimeError):
+                pass
+        for key in current - set(old):
+            try:
+                getattr(group, remover)(key)
+            except (AttributeError, OSError, RuntimeError):
+                pass
+
+
+def _restore_config_bytes(original: bytes | None) -> None:
+    if original is not None:
+        try:
+            with open(CONFIG_FILE, "rb") as stream:
+                if stream.read() == original:
+                    return
+        except OSError:
+            pass
+        atomic_write_bytes(CONFIG_FILE, original)
+    elif os.path.lexists(CONFIG_FILE):
+        info = os.lstat(CONFIG_FILE)
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise ValueError("failed candidate config is not a regular file")
+        os.unlink(CONFIG_FILE)
+
+
+def _migrate_config_secrets(cfg: AppConfig,
+                            original_config: bytes | None) -> AppConfig:
+    """Commit literal-secret migration only after all durable read-backs."""
+    if not (_is_literal_secret(cfg.provider.api_key)
+            or _is_literal_secret(cfg.rerank_llm_api_key)):
+        _write_to_param_store(cfg)
+        return cfg
+
+    from . import secure_storage
+
+    candidate = AppConfig.from_dict(cfg.to_dict())
+    group = _get_param_group()
+    param_snapshot = _snapshot_param_group(group)
+    param_write_started = False
+    existing_secret_paths = {
+        os.path.realpath(os.path.join(SECRETS_DIR, name))
+        for name in os.listdir(SECRETS_DIR)
+    } if os.path.isdir(SECRETS_DIR) else set()
+    created_secret_paths = set()
+    try:
+        candidate.provider.api_key = secure_storage.migrate_literal_secret(
+            candidate.provider.api_key, SECRETS_DIR, "provider-api-key")
+        if (_is_literal_secret(cfg.provider.api_key)
+                and candidate.provider.api_key.startswith("file:")):
+            path = candidate.provider.api_key.removeprefix("file:")
+            if path not in existing_secret_paths:
+                created_secret_paths.add(path)
+        candidate.rerank_llm_api_key = secure_storage.migrate_literal_secret(
+            candidate.rerank_llm_api_key, SECRETS_DIR, "reranker-api-key")
+        if (_is_literal_secret(cfg.rerank_llm_api_key)
+                and candidate.rerank_llm_api_key.startswith("file:")):
+            path = candidate.rerank_llm_api_key.removeprefix("file:")
+            if path not in existing_secret_paths:
+                created_secret_paths.add(path)
+        secure_storage.atomic_write_json(CONFIG_FILE, candidate.to_dict())
+        with open(CONFIG_FILE, "r", encoding="utf-8") as stream:
+            persisted = json.load(stream)
+        if persisted != candidate.to_dict():
+            raise ValueError("migrated configuration read-back mismatch")
+        param_write_started = True
+        _write_to_param_store(candidate, group=group)
+        return candidate
+    except Exception as exc:
+        rollback_errors = []
+        try:
+            _restore_config_bytes(original_config)
+        except Exception as rollback_exc:
+            rollback_errors.append(repr(rollback_exc))
+        if param_write_started:
+            _restore_param_group(group, param_snapshot)
+        for path in created_secret_paths:
+            try:
+                info = os.lstat(path)
+                if stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode):
+                    os.unlink(path)
+            except FileNotFoundError:
+                pass
+            except OSError as cleanup_exc:
+                rollback_errors.append(repr(cleanup_exc))
+        detail = "; rollback issues: " + ", ".join(rollback_errors) \
+            if rollback_errors else ""
+        print(
+            "FreeCAD AI: secret migration failed; previous configuration "
+            f"was retained ({exc!r}){detail}",
+            file=sys.stderr,
+        )
+        return cfg
 
 
 def load_config() -> AppConfig:
@@ -560,9 +706,12 @@ def load_config() -> AppConfig:
     """
     _ensure_dirs()
     cfg = AppConfig()
+    original_config = None
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE, "rb") as f:
+                original_config = f.read()
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             cfg = AppConfig.from_dict(data)
         except (json.JSONDecodeError, TypeError, KeyError):
@@ -574,15 +723,13 @@ def load_config() -> AppConfig:
     if cfg.rerank_llm_model and not cfg.rerank_params:
         cfg.rerank_params = dict(cfg.model_params.get(cfg.rerank_llm_model, {}))
     _apply_param_store_overrides(cfg)
-    _write_to_param_store(cfg)
-    return cfg
+    return _migrate_config_secrets(cfg, original_config)
 
 
 def save_config(config: AppConfig):
     """Save configuration to disk and mirror to FreeCAD's parameter store."""
     _ensure_dirs()
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config.to_dict(), f, indent=2)
+    atomic_write_json(CONFIG_FILE, config.to_dict())
     _write_to_param_store(config)
 
 
@@ -649,15 +796,18 @@ def _apply_param_store_overrides(cfg: AppConfig) -> None:
         cfg.enable_tools = group.GetBool("EnableTools", cfg.enable_tools)
 
 
-def _write_to_param_store(cfg: AppConfig) -> None:
+def _write_to_param_store(cfg: AppConfig, group=None) -> None:
     """Mirror cfg values to ParamGet so the preferences page reflects them.
 
     Lets the user open Edit → Preferences after using the Settings dialog
     and see current values rather than stale Pref widget defaults.
     """
-    group = _get_param_group()
+    group = group if group is not None else _get_param_group()
     if group is None:
         return
+    # Write the migrated reference first. If this fails, no other preference
+    # value has been changed and transaction rollback remains lossless.
+    group.SetString("ApiKey", cfg.provider.api_key)
     if cfg.provider.name in _PARAM_PROVIDERS:
         group.SetInt("ProviderIndex", _PARAM_PROVIDERS.index(cfg.provider.name))
     else:
@@ -671,7 +821,6 @@ def _write_to_param_store(cfg: AppConfig) -> None:
             pass
     group.SetString("Model", cfg.provider.model)
     group.SetString("BaseUrl", cfg.provider.base_url)
-    group.SetString("ApiKey", cfg.provider.api_key)
     if cfg.mode in _PARAM_MODES:
         group.SetInt("ModeIndex", _PARAM_MODES.index(cfg.mode))
     if cfg.thinking in _PARAM_THINKING:

@@ -152,16 +152,16 @@ class LLMClient:
         # rather than finishing. Read by the UI to warn the user (issue #50).
         self.response_truncated = False
 
-        # SSL context for HTTPS requests.
-        # Snap-packaged FreeCAD may lack the _ssl C extension, in which
-        # case we fall back to no certificate verification.  The connection
-        # is still TLS-encrypted; only server identity is unverified.
+        # SSL context for HTTPS requests.  A broken trust store must never
+        # silently disable server authentication; keep local HTTP providers
+        # usable, but fail closed when an HTTPS request is attempted.
+        self._ssl_context_error = None
         if _HAS_SSL:
             try:
                 self._ssl_ctx = ssl.create_default_context()
-            except Exception:
-                # Cert store unavailable (e.g. snap sandbox)
-                self._ssl_ctx = ssl._create_unverified_context()
+            except Exception as exc:
+                self._ssl_ctx = None
+                self._ssl_context_error = exc
         else:
             self._ssl_ctx = None
 
@@ -766,11 +766,18 @@ class LLMClient:
 
     def _check_ssl(self, url: str) -> None:
         """Raise LLMError if HTTPS is requested but SSL is unavailable."""
-        if url.startswith("https") and not _HAS_SSL:
+        if not url.startswith("https"):
+            return
+        if not _HAS_SSL:
             raise LLMError(
                 "HTTPS is not available (Python _ssl module missing). "
                 "This can happen with snap-packaged FreeCAD. "
                 "Use Ollama (http://localhost:11434) or fix the snap's Python SSL support."
+            )
+        if self._ssl_context_error is not None:
+            raise LLMError(
+                "HTTPS certificate verification could not be initialized. "
+                "Fix the Python trust store before contacting the provider."
             )
 
     def _get_retry_delay(self, error: urllib.error.HTTPError, attempt: int) -> float:

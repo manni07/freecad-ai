@@ -24,5 +24,5 @@
     </content>
     <depend type="internal">FreeCAD</depend>
     <freecadmin>1.0</freecadmin>
-    <pythonmin>3.10</pythonmin>
+    <pythonmin>3.11</pythonmin>
 </package>

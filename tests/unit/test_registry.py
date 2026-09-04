@@ -241,3 +241,64 @@ class TestBuiltinToolSchemas:
             "Array-typed properties without 'items' (rejected by strict "
             f"providers like GitHub Models): {offenders}"
         )
+
+
+class TestDefaultRegistryExclusions:
+    """Capability exclusions must remove tools before any schema or dispatch."""
+
+    def test_excluded_builtin_is_absent_while_other_tools_remain(self, monkeypatch):
+        from freecad_ai.tools import setup
+
+        monkeypatch.setattr(setup, "ALL_TOOLS", [
+            _make_tool("execute_code"),
+            _make_tool("safe_tool"),
+        ])
+        monkeypatch.setattr(
+            "freecad_ai.extensions.user_tools.load_user_tools", lambda *a, **k: [])
+
+        try:
+            registry = setup.create_default_registry(
+                include_mcp=False, exclude_names={"execute_code"})
+        except TypeError as exc:
+            pytest.fail(f"create_default_registry lacks exclude_names: {exc}")
+
+        assert registry.get("execute_code") is None
+        assert registry.get("safe_tool") is not None
+        assert registry.execute("execute_code", {}).success is False
+
+    def test_exclusion_also_blocks_an_extra_tool_with_the_same_name(self, monkeypatch):
+        from freecad_ai.tools import setup
+
+        monkeypatch.setattr(setup, "ALL_TOOLS", [])
+        monkeypatch.setattr(
+            "freecad_ai.extensions.user_tools.load_user_tools", lambda *a, **k: [])
+
+        try:
+            registry = setup.create_default_registry(
+                include_mcp=False,
+                extra_tools=[_make_tool("execute_code")],
+                exclude_names={"execute_code"},
+            )
+        except TypeError as exc:
+            pytest.fail(f"create_default_registry lacks exclude_names: {exc}")
+
+        assert registry.list_tools() == []
+
+    def test_exclusion_blocks_user_and_upstream_mcp_sources(self, monkeypatch):
+        from freecad_ai.tools import setup
+
+        monkeypatch.setattr(setup, "ALL_TOOLS", [])
+        monkeypatch.setattr(
+            "freecad_ai.extensions.user_tools.load_user_tools",
+            lambda *a, **k: [_make_tool("execute_code")],
+        )
+
+        class _Manager:
+            def register_tools_into(self, registry):
+                registry.register(_make_tool("execute_code"))
+                registry.register(_make_tool("run_macro"))
+
+        monkeypatch.setattr("freecad_ai.mcp.manager.get_mcp_manager", lambda: _Manager())
+        registry = setup.create_default_registry(exclude_names={"execute_code"})
+        assert registry.get("execute_code") is None
+        assert registry.get("run_macro") is not None

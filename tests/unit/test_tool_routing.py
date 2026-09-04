@@ -9,12 +9,46 @@ They cannot prove the LLM routes correctly (that needs a live eval); they
 prevent the steering text from silently regressing.
 """
 
+import inspect
+from types import SimpleNamespace
+
 from freecad_ai.core.system_prompt import build_system_prompt
 from freecad_ai.tools.freecad_tools import CREATE_SKETCH, EXECUTE_CODE
 
 
+def test_gui_registry_filter_and_reranker_pins_share_the_present_name_set():
+    """A pinned name must not resurrect a capability omitted from the registry."""
+    from freecad_ai.ui.chat_widget import ChatDockWidget
+
+    source = inspect.getsource(ChatDockWidget._continue_send)
+    assert "exclude_names" in source and "get_code_execution_access" in source
+    assert "present_names" in source
+    assert "pinned" in source and "intersection" in source
+
+
+def test_filtered_registry_schema_cannot_restore_execute_code_pin(monkeypatch):
+    """Schema filtering operates on the physically present registry names."""
+    from freecad_ai.tools import setup
+
+    monkeypatch.setattr(setup, "ALL_TOOLS", [CREATE_SKETCH, EXECUTE_CODE])
+    monkeypatch.setattr(
+        "freecad_ai.config.get_config",
+        lambda: SimpleNamespace(scan_freecad_macros=False, user_tools_disabled=[]),
+    )
+    monkeypatch.setattr(
+        "freecad_ai.extensions.user_tools.load_user_tools", lambda *a, **k: [])
+    locked = setup.create_default_registry(
+        include_mcp=False, exclude_names={"execute_code"})
+    armed = setup.create_default_registry(include_mcp=False, exclude_names=set())
+
+    assert locked.to_openai_schema({"execute_code"}) == []
+    assert [item["function"]["name"] for item in armed.to_openai_schema(
+        {"execute_code"})] == ["execute_code"]
+
+
 def _act_tools_prompt():
-    return build_system_prompt(mode="act", tools_enabled=True)
+    return build_system_prompt(
+        mode="act", tools_enabled=True, code_tool_enabled=True)
 
 
 class TestActModeSteering:
