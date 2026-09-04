@@ -2,6 +2,7 @@
 
 import http.client
 import json
+import socket
 import socketserver
 import threading
 import time
@@ -194,9 +195,21 @@ def test_eight_sse_connections_reject_ninth_before_thread_creation(
                 request = urllib.request.Request(
                     f"http://127.0.0.1:{server.port}/sse", headers=AUTH)
                 streams.append(urllib.request.urlopen(request, timeout=5))
-            status, _, headers = _ping(server.port, AUTH)
-            assert status == 503
-            assert headers.get("Retry-After") == "1"
+            with socket.create_connection(
+                    ("127.0.0.1", server.port), timeout=5) as rejected:
+                rejected.sendall(
+                    b"GET /mcp HTTP/1.0\r\n"
+                    + f"Host: 127.0.0.1:{server.port}\r\n".encode()
+                    + f"Authorization: Bearer {TOKEN}\r\n\r\n".encode()
+                )
+                response = b""
+                while b"\r\n\r\n" not in response:
+                    chunk = rejected.recv(4096)
+                    if not chunk:
+                        break
+                    response += chunk
+            assert response.startswith(b"HTTP/1.0 503 ")
+            assert b"\r\nRetry-After: 1\r\n" in response
             assert len(starts) == 8
         finally:
             for stream in streams:
