@@ -639,6 +639,12 @@ result is verified through GitHub and reported separately because a commit
 cannot record its own eventual merge commit. Repository integration does not
 clear any release/runtime HOLD.
 
+The first GitHub security-regression run exposed a CI-environment omission:
+two selected security tests import the UI compatibility layer, but the pinned
+test-tool installation did not provide PySide. CI now pins the locally verified
+`PySide6==6.11.2` as test tooling. The production dependency list remains empty
+because FreeCAD supplies PySide/Qt at runtime.
+
 ## Pre-integration Git state (historical)
 
 At documentation time, `HEAD` still equals the base commit and all remediation
