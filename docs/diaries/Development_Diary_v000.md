@@ -31,6 +31,13 @@
 - Critical Ruff is green. Full Ruff remains a recorded legacy/quality backlog. Bandit remains 3 High/7 Medium/89 Low; all three High reports have exact contextual audit triage and no scanner suppression.
 - Scoped pip-audit passes for the explicitly empty declared PyPI set. It is deliberately not called a real-host scan.
 
-## Current decision
+## Pre-integration decision
 
-Implementation and documentation are complete enough for review, but release remains `HOLD`. The exact integration selection produced 88 `FreeCAD AppImage not found` skips and is not a pass. Missing evidence: supported FreeCAD GUI/integration; real disposable-document approval; live authenticated FreeCAD MCP positive/negative handshake; actual-host SBOM plus CVE scan; isolated private-LAN test; Windows ACL/POSIX equivalence; workflow Action SHA/transitive pins. No process was restarted and no release/merge was performed.
+Implementation and documentation are complete enough for review, but release remains `HOLD`. The exact integration selection produced 88 `FreeCAD AppImage not found` skips and is not a pass. Missing evidence: supported FreeCAD GUI/integration; real disposable-document approval; live authenticated FreeCAD MCP positive/negative handshake; actual-host SBOM plus CVE scan; isolated private-LAN test; Windows ACL/POSIX equivalence; workflow Action SHA/transitive pins. At this checkpoint, no process was restarted and no release/merge had been performed.
+
+## Repository integration
+
+- Fresh pre-PR verification passed all 1,556 unit tests in 129.03 seconds with no skips; critical Ruff, scoped declared-dependency audit, documentation structure/links, credential-pattern scan, and staged-diff checks passed.
+- Commit `7ab3900f178ae8360c11da3933a30d263555e23f` was pushed to `manni07/freecad-ai` on branch `agent-workflow/20260904-115556-security-remediation`.
+- Pull request `https://github.com/manni07/freecad-ai/pull/1` targets the fork's `master`. The upstream repository `ghbalf/freecad-ai` was not modified.
+- The user explicitly authorized commit, PR, and merge. This repository integration does not resolve the runtime/release HOLDs above and does not authorize a process restart or deployment.

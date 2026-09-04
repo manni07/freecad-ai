@@ -6,17 +6,19 @@
 - Isolated worktree: `/Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-115556-security-remediation`
 - Branch: `agent-workflow/20260904-115556-security-remediation`
 - Base commit: `15774022a1c981335135d95928bd6cb4f7ba0431`
-- Current `HEAD`: `15774022a1c981335135d95928bd6cb4f7ba0431` (all remediation changes are still uncommitted)
+- Implementation commit: `7ab3900f178ae8360c11da3933a30d263555e23f`
+- Pull request: `https://github.com/manni07/freecad-ai/pull/1` against `manni07/freecad-ai:master`
 - Source audit: `docs/audits/security-audit-2026-09-04.html`
 - Source audit SHA-256: `d41a1861a11a366a07d4f966185fad8d8b2ae7c7cf87bf5f2a9c3957c43e1ad0`
 - Open-item register: `docs/openitem/security-remediation-open-items-2026-09-04.md`
 - Test dossier: `docs/tests/TD_security_remediation_2026-09-04.md`
 
-Do not resume in the primary checkout. Do not reset, clean, stash, checkout, or overwrite the dirty worktree; the uncommitted and untracked files are the implementation under review. `.DS_Store`, `.coverage`, and `build/` are unrelated/generated and must not be staged.
+Do not resume in the primary checkout. Do not reset, clean, stash, checkout, or overwrite the workflow worktree. The implementation is committed and pushed; `.DS_Store` remains intentionally untracked, while `.coverage`, generated egg-info, and `build/security-coverage.xml` are not deliverables.
 
 ## Current evidence checkpoint
 
 - Audit findings SEC-01 through SEC-07 have implementation and focused-test coverage in the worktree.
+- Fresh pre-PR unit gate: `1556 passed` in 129.03 seconds, with no failures or skips.
 - Final plain unit run: `1556 passed` in 113.68 seconds, with no failures or skips. Final coverage run: `1556 passed` in 131.40 seconds; changed-line coverage is 97% over 862 changed lines with 24 missing.
 - Independent diff-cover rerun passed at 97%; only `freecad_ai/ui/chat_widget.py` is below 100% among changed production files.
 - Final Phase-F reviews: architecture 97%; simulation 97.6%; both `PASS`.
@@ -37,7 +39,7 @@ Run these read-only identity checks first:
 ```bash
 cd /Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-115556-security-remediation
 test "$(git branch --show-current)" = agent-workflow/20260904-115556-security-remediation
-test "$(git rev-parse HEAD)" = 15774022a1c981335135d95928bd6cb4f7ba0431
+git merge-base --is-ancestor 7ab3900f178ae8360c11da3933a30d263555e23f HEAD
 test "$(git merge-base HEAD 15774022a1c981335135d95928bd6cb4f7ba0431)" = 15774022a1c981335135d95928bd6cb4f7ba0431
 test "$(shasum -a 256 docs/audits/security-audit-2026-09-04.html | awk '{print $1}')" = d41a1861a11a366a07d4f966185fad8d8b2ae7c7cf87bf5f2a9c3957c43e1ad0
 git status --short
@@ -49,7 +51,7 @@ Review the authoritative artifacts before doing work:
 ```bash
 sed -n '1,280p' docs/tests/TD_security_remediation_2026-09-04.md
 sed -n '1,320p' docs/openitem/security-remediation-open-items-2026-09-04.md
-git diff --stat
+git diff --stat 15774022a1c981335135d95928bd6cb4f7ba0431..HEAD
 ```
 
 If the coordinates and hashes match, run deterministic local verification without starting a service:
@@ -133,11 +135,12 @@ Stop immediately and keep the gate on `HOLD` if any of these occurs:
 
 ## Authority and handoff state
 
-- Completed under the implementation authority: source/tests plus the complete TCCode documentation set listed by `git status`; do not broaden or rewrite them during resume without a new task.
-- Authorized on resume: read-only identity/verification checks and documentation of their results.
+- Completed under the implementation authority: source/tests plus the complete TCCode documentation set in commit `7ab3900f178ae8360c11da3933a30d263555e23f`; do not broaden or rewrite them during resume without a new task.
+- The user explicitly authorized commit, push, pull request, and merge. PR #1 records that repository-integration scope; repository integration does not authorize release, deployment, live runtime activity, or process lifecycle changes.
+- Authorized on resume after repository integration: read-only identity/verification checks and documentation of their results.
 - The already-completed editable install was a controlled venv mutation. Repeating `.venv/bin/python -m pip install --no-deps -e .` is not part of read-only resume authority; it requires a new implementation/release verification scope and cleanup of generated egg-info.
-- Not authorized on resume: further source/test/config changes, real migration, live server activity, process termination/restart, destructive cleanup, commit, push, PR, merge, or release.
+- Not authorized on resume: further source/test/config changes, real migration, live server activity, process termination/restart, destructive cleanup, or release.
 - Accepted residuals that must remain visible: private-LAN HTTP has no transport confidentiality; STDIO exposes `execute_code`; authenticated HTTP exposes `run_macro`; approved Python has the FreeCAD user's OS privileges; Windows permission equivalence is unproven; ParamGet rollback is best effort; a post-commit parent-directory fsync failure can report uncertainty while leaving complete old-or-new bytes.
 - Static/open residuals: full Ruff baseline, Bandit Medium/Low backlog, accepted three Bandit High contexts, and unresolved Action SHA/transitive pinning.
 
-To resume implementation or integration, first provide the identity-check output and request a new explicit scope. Never infer authority for Git or live runtime work from this handoff.
+To resume implementation or release work, first provide the identity-check output and request a new explicit scope. Never infer authority for live runtime or release work from this handoff.

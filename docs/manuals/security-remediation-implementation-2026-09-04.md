@@ -22,8 +22,10 @@ in the [remediation report](../audits/security-remediation-2026-09-04.html).
 - Isolated worktree:
   `/Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-115556-security-remediation`
 - Branch: `agent-workflow/20260904-115556-security-remediation`
-- Base and current uncommitted `HEAD`:
-  `15774022a1c981335135d95928bd6cb4f7ba0431`
+- Base: `15774022a1c981335135d95928bd6cb4f7ba0431`
+- Implementation commit: `7ab3900f178ae8360c11da3933a30d263555e23f`
+- Pull request: `https://github.com/manni07/freecad-ai/pull/1`, targeting
+  `manni07/freecad-ai:master`
 - Workflow: TCCode led the gated dossiers and implementation; Agent Workflow v4
   ran in thorough mode with a fixed team of four.
 - Operational invariant: no computer, server, FreeCAD process, or other service
@@ -626,7 +628,18 @@ python -m pytest -q -p no:cacheprovider -o "addopts=" tests/unit/test_secure_sto
 POSIX mode and `dir_fd` results do not establish Windows ACL or reparse-point
 equivalence. Platform-specific skips require explicit Windows evidence.
 
-## Git state before commit
+## Repository integration record
+
+The curated implementation commit
+`7ab3900f178ae8360c11da3933a30d263555e23f` was pushed to the workflow branch,
+and pull request `https://github.com/manni07/freecad-ai/pull/1` was opened against
+the fork's `master`. The user explicitly authorized commit, pull request, and
+merge. The read-only upstream `ghbalf/freecad-ai` was not modified. The merge
+result is verified through GitHub and reported separately because a commit
+cannot record its own eventual merge commit. Repository integration does not
+clear any release/runtime HOLD.
+
+## Pre-integration Git state (historical)
 
 At documentation time, `HEAD` still equals the base commit and all remediation
 changes are uncommitted. Modified tracked files include the entrypoints,
