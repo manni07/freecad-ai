@@ -296,7 +296,10 @@ def test_unsafe_explicit_mod_directory_is_rejected_before_mutation(
 
 @pytest.mark.parametrize(
     "prefix",
-    ["/System", "/Library", "/Applications", "/usr", "/private/etc"],
+    [
+        "/Applications", "/Library", "/System", "/bin", "/etc",
+        "/private/etc", "/sbin", "/usr",
+    ],
 )
 def test_system_prefixes_are_rejected_even_for_dry_run(
         isolated_process, prefix):
@@ -311,6 +314,45 @@ def test_system_prefixes_are_rejected_even_for_dry_run(
     _assert_failure(result)
     assert "system" in (result.stderr + result.stdout).lower()
     assert not destination.exists(), "dry-run mutated a system destination"
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "/Applications", "/Library", "/System", "/bin", "/etc",
+        "/private/etc", "/sbin", "/usr",
+    ],
+)
+def test_double_slash_system_prefixes_are_rejected_even_for_dry_run(
+        isolated_process, prefix):
+    """POSIX // handling must not bypass protected-prefix rejection."""
+    target = f"/{prefix}/FreeCAD-AI-installer-contract-never-write/Mod"
+    destination = Path(target) / "freecad-ai"
+    assert not destination.exists(), "test sentinel unexpectedly exists"
+
+    result = isolated_process["run"](
+        "--dry-run", "--mod-dir", target)
+
+    _assert_failure(result)
+    assert "system" in (result.stderr + result.stdout).lower()
+    assert not destination.exists(), "dry-run mutated a system destination"
+
+
+@pytest.mark.parametrize("leading_root", ["/", "//"])
+def test_canonicalization_preserves_a_single_leading_root_separator(
+        isolated_process, leading_root):
+    """Missing root-level paths must not become a distinct // namespace."""
+    suffix = "FreeCAD-AI-installer-contract-never-write-root/Mod"
+    target = f"{leading_root}{suffix}"
+    assert not Path(target).exists(), "test sentinel unexpectedly exists"
+
+    result = isolated_process["run"](
+        "--dry-run", "--mod-dir", target)
+
+    _assert_success(result)
+    assert f"Destination: /{suffix}/freecad-ai" in result.stdout
+    assert "Destination: //" not in result.stdout
+    assert not Path(target).exists(), "dry-run mutated the destination"
 
 
 def test_symlink_parent_cannot_bypass_canonical_system_prefix_rejection(

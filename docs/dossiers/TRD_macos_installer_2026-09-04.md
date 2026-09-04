@@ -64,4 +64,4 @@ Required evidence:
 7. Real-host generic dry-run plus before/after filesystem evidence.
 8. Live FreeCAD execution documented as `HOLD` while unavailable.
 
-Final evidence: `56 passed in 14.70s` in the focused suite and `1612 passed in 149.15s` in the complete unit suite, both with zero skips. Independent security review repeated the focused suite (`56 passed`) and awarded 97.4% aggregate with no scoped code blocker.
+Final evidence after PR-CI correction: `69 passed in 18.30s` in the focused suite, `375 passed in 46.43s` in the exact CI-equivalent security slice, and `1625 passed in 150.79s` in the complete unit suite, all with zero skips. Independent review of the final multi-leading-slash normalization passed at 98.4% (C1 99%, C2 99%, C3 99%, C4 98%, C5 97%). These are local gates; GitHub-hosted CI remains `HOLD` until the correction commit is pushed and its latest-head checks pass.

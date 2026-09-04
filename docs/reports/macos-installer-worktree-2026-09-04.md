@@ -5,7 +5,7 @@
 - Worktree: `/Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-183200-macos-installer`
 - Branch: `agent-workflow/20260904-183200-macos-installer`
 - Base commit: `04fc3ba94d7882684369a9cd2b8a4999a39811c9`
-- Installer SHA-256: `f04e1919959673ffd70c6c7f02d7861ba3a1d991c2c1ec21189c71738ae9099d`
+- Installer SHA-256: `54aba9b1e88c0c120b3698eb6c34c3cb07dd2b80e2166a0215a7ad5487da6eb6`
 - Workflow: TCCode and Agent Workflow v4, thorough, fixed team of four.
 
 ## Implemented contract
@@ -34,13 +34,15 @@ The installer contains no package/network/provider/config actions, does not use
 
 | Gate | Result |
 |---|---|
-| Focused installer suite | Root: **56 passed in 14.70s**; independent: **56 passed in 21.40s**; zero skips. |
-| Complete unit suite | Final pre-commit run: **1612 passed in 145.05s**, zero skips; prior final-code run: **1612 passed in 149.15s**, zero skips. |
+| Focused installer suite | Final post-PR correction: **69 passed in 18.30s**, zero skips; prior root and independent runs passed the earlier 56-case suite. |
+| CI-equivalent security slice | **375 passed in 46.43s**, zero skips; MCP admission case additionally passed **20/20** repetitions. |
+| Complete unit suite | Final post-PR correction: **1625 passed in 150.79s**, zero skips; prior committed tree: **1612 passed in 145.05s**. |
 | Real Darwin dry-run | rc 0; generic destination `/Users/turgay/Library/Application Support/FreeCAD/Mod/freecad-ai`; real profile `ABSENT` before/after. |
 | Real absent-state check | Expected rc 1; real profile `ABSENT` before/after. |
 | Test isolation | Temporary HOME/TMPDIR/PATH and fixture-owned `uname`; no real profile target. |
-| Test simulation | T1 99%, T2 99%, T3 98%, T4 97%, T5 99%; aggregate 98.4%. |
-| Security review | **PASS, 97.4%**: C1 99%, C2 98%, C3 97%, C4 97%, C5 96%. |
+| Test simulation | T1 99%, T2 99%, T3 99%, T4 97%, T5 99%; aggregate 98.6%. |
+| GitHub-hosted CI | **HOLD at this pre-push checkpoint**; both failed runs belong to parent head `207329a8bec1dfad862ad7e8387d5577f0fc7e14`. The correction head must be pushed and queried separately. |
+| Security review | **PASS, 98.4%** after final correction: C1 99%, C2 99%, C3 99%, C4 98%, C5 97%. |
 | External `agy` | Initial headless attempt permission-blocked; later approved independent architecture use incorporated real findings and final scoped review passed. |
 | Live FreeCAD | Unavailable; explicit `HOLD`. |
 
@@ -67,3 +69,11 @@ represented as live FreeCAD evidence.
 No installation, FreeCAD lifecycle action, merge, or release is authorized by
 this report. The user separately authorized a focused commit, push, and pull
 request; the worktree remains available for review.
+
+The initial PR checks found a cross-platform canonical path defect: root plus
+a slash-prefixed unresolved suffix became `//...`, while macOS also preserved
+an explicitly supplied `//System` ancestor. Canonicalization now collapses
+every multi-leading-slash form to one leading slash before protected-prefix
+matching. The MCP test uses a raw bodyless ninth request so it can
+reliably inspect the intended pre-thread 503 without racing a POST body against
+the server close; production MCP behavior is unchanged.

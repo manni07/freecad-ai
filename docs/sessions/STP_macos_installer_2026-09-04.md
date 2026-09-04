@@ -6,8 +6,12 @@
 - Worktree: `/Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-183200-macos-installer`
 - Branch: `agent-workflow/20260904-183200-macos-installer`
 - Base commit: `04fc3ba94d7882684369a9cd2b8a4999a39811c9`
+- Pull request: `https://github.com/manni07/freecad-ai/pull/2`
+- Correction parent: `207329a8bec1dfad862ad7e8387d5577f0fc7e14`.
+  The correction commit cannot embed its own hash; resolve the current PR head
+  with `git rev-parse HEAD` and compare it with the remote before resuming.
 - Installer: `scripts/install_macos.sh`
-- Installer SHA-256 at this checkpoint: `f04e1919959673ffd70c6c7f02d7861ba3a1d991c2c1ec21189c71738ae9099d`
+- Installer SHA-256 at this checkpoint: `54aba9b1e88c0c120b3698eb6c34c3cb07dd2b80e2166a0215a7ad5487da6eb6`
 - Test dossier: `docs/tests/TD_macos_installer_2026-09-04.md`
 - Open items: `docs/openitem/macos-installer-open-items-2026-09-04.md`
 
@@ -18,10 +22,16 @@ the root workflow and are not incidental cleanup targets.
 
 ## Verified checkpoint
 
-- Final focused installer command: root **56 passed in 14.70 seconds** and
-  independent **56 passed in 21.40 seconds**, both with zero skips.
-- Final pre-commit complete unit command: **1612 passed in 145.05 seconds**,
-  zero skips; an earlier final-code run passed the same 1,612 tests in 149.15 seconds.
+- Final post-PR focused installer command: **69 passed in 18.30 seconds**, zero
+  skips. Prior root and independent runs passed the earlier 56-case suite.
+- Exact CI-equivalent security slice: **375 passed in 46.43 seconds**, zero
+  skips. The corrected MCP admission test also passed **20/20** repetitions.
+- Final post-PR complete unit command: **1625 passed in 150.79 seconds**, zero
+  skips; the prior committed tree passed 1,612 tests in 145.05 seconds.
+- GitHub-hosted CI is **HOLD at this checkpoint**: the two failed runs belong
+  to correction parent `207329a8bec1dfad862ad7e8387d5577f0fc7e14`.
+  Commit and push the correction, then require all checks on the new PR head
+  to pass before changing this integration gate.
 - Real Darwin `--dry-run`: rc 0, resolved generic destination
   `/Users/turgay/Library/Application Support/FreeCAD/Mod/freecad-ai`, with the
   real profile `ABSENT` before and after. Real `--check`: expected rc 1 for the
@@ -32,10 +42,10 @@ the root workflow and are not incidental cleanup targets.
   canonical user-target validation, deterministic selection, per-target lock,
   validated staging, exclusive direct `ln`/`mkdir` claims, final copy `rsync`,
   idempotence, backups, race/signal/partial cleanup, and read-only modes.
-- The first time-bounded headless `agy` attempt was permission-blocked. A later
-  independent architecture review could run it correctly, incorporated real
-  findings, and completed a final scoped PASS. Security simulation scored
-  **97.4%** (C1 99, C2 98, C3 97, C4 97, C5 96).
+- The first time-bounded headless `agy` attempt was permission-blocked. Later
+  independent review incorporated real findings, vetoed the first PR-CI
+  correction after reproducing macOS `//System`, and passed the final scoped
+  normalization at **98.4%** (C1 99, C2 99, C3 99, C4 98, C5 97).
 - No FreeCAD application or CLI is installed on the validation host. Live
   workbench loading remains `HOLD`, regardless of green unit evidence.
 
@@ -45,7 +55,7 @@ the root workflow and are not incidental cleanup targets.
 cd /Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-183200-macos-installer
 test "$(git branch --show-current)" = agent-workflow/20260904-183200-macos-installer
 test "$(git merge-base HEAD 04fc3ba94d7882684369a9cd2b8a4999a39811c9)" = 04fc3ba94d7882684369a9cd2b8a4999a39811c9
-test "$(shasum -a 256 scripts/install_macos.sh | awk '{print $1}')" = f04e1919959673ffd70c6c7f02d7861ba3a1d991c2c1ec21189c71738ae9099d
+test "$(shasum -a 256 scripts/install_macos.sh | awk '{print $1}')" = 54aba9b1e88c0c120b3698eb6c34c3cb07dd2b80e2166a0215a7ad5487da6eb6
 git status --short
 git diff --check
 ```

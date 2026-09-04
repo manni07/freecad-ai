@@ -195,7 +195,14 @@ canonicalize_directory_path() {
     [ -d "$existing_ancestor" ] || return 1
     physical_ancestor=$(CDPATH= cd "$existing_ancestor" 2>/dev/null && pwd -P) || \
         return 1
-    printf '%s%s\n' "$physical_ancestor" "$unresolved_suffix"
+    while [ "${physical_ancestor#//}" != "$physical_ancestor" ]; do
+        physical_ancestor=${physical_ancestor#/}
+    done
+    if [ "$physical_ancestor" = "/" ]; then
+        printf '/%s\n' "${unresolved_suffix#/}"
+    else
+        printf '%s%s\n' "$physical_ancestor" "$unresolved_suffix"
+    fi
 }
 
 MOD_DIR=$(canonicalize_directory_path "$MOD_DIR") || \

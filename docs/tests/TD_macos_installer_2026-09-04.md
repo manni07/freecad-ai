@@ -100,8 +100,8 @@ Later production gates:
 
 ```bash
 /bin/bash -n scripts/install_macos.sh
-PYTHONDONTWRITEBYTECODE=1 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q -p no:cacheprovider -o addopts='' tests/unit -rs
-.venv/bin/ruff check tests/unit/test_install_macos.py --select E9,F63,F7,F82
+PYTHONDONTWRITEBYTECODE=1 QT_QPA_PLATFORM=offscreen /Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-115556-security-remediation/.venv/bin/python -m pytest -q -p no:cacheprovider -o addopts='' tests/unit -rs
+/Volumes/ExtremePro/projects/freecad-ai-agent-worktrees/20260904-115556-security-remediation/.venv/bin/ruff check tests/unit/test_install_macos.py --select E9,F63,F7,F82
 git diff --check
 ```
 
@@ -114,9 +114,11 @@ available and remains `HOLD`; a successful dry-run is not a substitute.
 | Stage | Expected result | Actual evidence | Gate |
 |---|---|---|---|
 | Test-first RED | Missing and unsafe behavior failed for production reasons only; collection, fixtures, syntax, timeouts, and skips remained clean. | Successive RED reviews bound the initial interface and then root refusal, canonical system-scope rejection, locking, direct destination claims, raced-state identity, signal rollback, and backup-independent partial cleanup. Inadequate exploratory injection conditions were explicitly discarded rather than counted as evidence. | TDD provenance confirmed. |
-| Production GREEN | Every focused case passes with zero skips; both direct publication modes and all cleanup paths meet the final contract. | Root run: **`56 passed in 14.70s`**, zero skips. Independent run: **`56 passed in 21.40s`**, zero skips. Link publication uses a validated stage followed by an exclusive direct `ln`; copy publication validates a staged copy, exclusively claims with `mkdir`, then performs the final `/usr/bin/rsync`. | **PASS** |
-| Regression | Full unit suite passes with zero skips. | Final pre-commit run: **`1612 passed in 145.05s`**, zero skips. An earlier final-code run also passed all 1,612 tests in 149.15s. | **PASS** |
-| Security review | Implementation is feasible, complete, maintainable, and fail-closed for the approved user-scope contract. | Final security score **97.4%**: C1 99%, C2 98%, C3 97%, C4 97%, C5 96%. The initial headless `agy` attempt was permission-blocked; a later independent architecture review successfully used `agy`, incorporated real findings, and the final scoped review passed. | **PASS** |
+| Production GREEN | Every focused case passes with zero skips; both direct publication modes and all cleanup paths meet the final contract. | Final post-PR correction: **`69 passed in 18.30s`**, zero skips. It includes single- and double-leading-root normalization plus every protected-prefix case. Earlier root and independent runs passed the prior 56-case suite. | **PASS** |
+| CI-equivalent security slice | The exact workflow-selected test list passes in the pinned Python 3.11/PySide environment. | **`375 passed in 46.43s`**, zero skips. The MCP pre-thread admission case also passed **20/20** repeated local runs after its client was changed from a racing POST body to a raw bodyless request. Production admission behavior was not changed. | **PASS** |
+| GitHub-hosted CI | The latest pushed PR head completes every required check. | The correction is not pushed at this documentation checkpoint; the two failed runs belong to parent head `207329a8bec1dfad862ad7e8387d5577f0fc7e14`. Query PR #2 after the correction push. | **HOLD** |
+| Regression | Full unit suite passes with zero skips. | Final post-PR correction run: **`1625 passed in 150.79s`**, zero skips. The earlier committed tree passed all 1,612 tests in 145.05s. | **PASS** |
+| Security review | Implementation is feasible, complete, maintainable, and fail-closed for the approved user-scope contract. | Final post-correction security score **98.4%**: C1 99%, C2 99%, C3 99%, C4 98%, C5 97%. The independent reviewer reproduced macOS `//System`, vetoed the first correction, and passed the final normalization only after all double-slash cases were covered. | **PASS** |
 | Real-host read-only | Darwin target selection and absent-state check do not mutate the real profile. | `scripts/install_macos.sh --dry-run` returned 0, resolved `/Users/turgay/Library/Application Support/FreeCAD/Mod/freecad-ai`, and profile state remained `ABSENT` before/after. `--check` returned the expected 1 for absence and also remained `ABSENT` before/after. | **PASS** |
 | Live runtime | Supported FreeCAD loads the installed workbench and completes a disposable-document smoke test. | FreeCAD unavailable; no install was performed. | **HOLD** |
 
@@ -126,7 +128,7 @@ available and remains `HOLD`; a successful dry-run is not a substitute.
 |---|---:|---|
 | T1 coverage completeness | 99% | All public options, target branches, destination types, modes, rollback, and static vetoes have explicit cases. |
 | T2 isolation | 99% | Temporary HOME/TMPDIR/PATH and fake uname contain every subprocess; no live process or network is used. |
-| T3 assertion quality | 98% | Behavior is proven through filesystem identity/snapshots and payloads, not implementation names or output text alone. |
+| T3 assertion quality | 99% | Behavior is proven through filesystem identity/snapshots, payloads, canonical output, and the raw admission response rather than implementation names alone. |
 | T4 maintainability | 97% | Shared runner and state helpers keep tests concise while retaining named intent boundaries. |
 | T5 risk strategy | 99% | Ambiguity, broken links, explicit replacement, injected post-backup failure, unsafe targets, and prohibited operations fail closed. |
 
@@ -134,11 +136,31 @@ Aggregate for the test definition: **98.6%**. All automated installer and unit
 gates are **PASS**. Live FreeCAD/runtime acceptance remains a separate `HOLD`;
 filesystem evidence is not presented as application-load evidence.
 
+## Post-PR CI correction
+
+The first two GitHub Actions runs exposed two independent issues. On Linux,
+missing macOS top-level directories made canonicalization reach `/`; joining
+that value to an already slash-prefixed unresolved suffix produced `//System`
+and bypassed the single-slash protected-prefix patterns. A dedicated RED test
+reproduced the same output locally. Independent review then found that macOS
+also preserves an explicitly supplied `//System` through `pwd -P`. The final
+production fix collapses every multi-leading-slash physical ancestor and emits
+exactly one leading separator. Both direct and generated double-slash forms are
+covered across all protected prefixes.
+
+The same Actions runs also exposed an intermittent pre-existing MCP test-client
+race. The server correctly sends a pre-thread 503 and closes socket nine, but
+`urllib` could still be sending the POST body and surface `BrokenPipeError`
+instead of the received status. The test now uses a raw bodyless request and
+asserts the 503 status line, `Retry-After: 1`, and unchanged eight-thread count.
+No MCP production code or concurrency limit was changed.
+
 Expanded test simulation remains above threshold: T1 coverage 99%, T2
 isolation 99%, T3 assertion quality 99%, T4 maintainability 97%, and T5 risk
 strategy 99%, aggregate **98.6%**. The higher T3 reflects deterministic fake
 EUID, lock-state, destination-reappearance, and signal injection with exact
-filesystem assertions; it does not promote the production gate while RED.
+filesystem assertions; it does not promote the GitHub-hosted CI gate while the
+correction remains unpushed.
 
 ## External review attempt
 

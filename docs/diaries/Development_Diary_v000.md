@@ -68,3 +68,14 @@ Implementation and documentation are complete enough for review, but release rem
 ## 2026-09-04 — macOS installer pre-commit verification
 
 - The exact staged tree repeated the complete unit suite immediately before commit: `1612 passed in 145.05s`, zero skips. This supersedes the earlier timing as the final integration gate without invalidating either successful run.
+
+## 2026-09-04 — macOS installer PR CI correction
+
+- The first two PR security-regression runs exposed a real cross-platform canonicalization defect: when a protected macOS top-level directory is absent on Linux, joining physical root `/` to a slash-prefixed unresolved suffix produced `//...` and missed the protected-prefix match. A local RED reproduced it; root joining now emits exactly one leading slash.
+- The same runs exposed an unrelated, pre-existing race in the MCP admission test. The ninth request is intentionally rejected before a thread is created, but `urllib` could still be sending its POST body when the server closed. The test now reads the raw 503 response through a bodyless request and retains the eight-thread assertion; production MCP behavior is unchanged.
+- Corrected evidence: `60 passed in 17.29s` for the installer suite, `20/20` repeated MCP admission runs, `366 passed in 43.28s` for the exact CI-equivalent security slice, and `1616 passed in 144.81s` for the complete unit suite; zero skips throughout.
+
+## 2026-09-04 — macOS double-leading-root security closure
+
+- Final review reproduced that macOS preserves an explicitly supplied `//System` physical path, which still bypassed single-slash protected-prefix patterns after the first CI correction. Eight parameterized RED cases captured every protected prefix; the installer now collapses all multi-leading-slash physical ancestors before matching.
+- Final local evidence on the corrected code: `69 passed in 18.30s` for the installer suite, `375 passed in 46.43s` for the exact CI-equivalent security slice, and `1625 passed in 150.79s` for the complete unit suite, all with zero skips. GitHub-hosted status remains HOLD until this correction is committed and pushed.
