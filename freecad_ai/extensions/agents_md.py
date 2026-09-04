@@ -10,10 +10,13 @@ Supports:
   - Variable substitution: {{document_name}}, {{object_count}}, etc.
 """
 
+import hashlib
 import os
 import re
+import stat
+from dataclasses import dataclass
 
-from ..config import CONFIG_DIR
+from ..config import CONFIG_DIR, get_config
 
 # Filenames to search for, in priority order
 INSTRUCTION_FILENAMES = ["AGENTS.md", "FREECAD_AI.md"]
@@ -30,40 +33,195 @@ MAX_PARENT_LEVELS = 3
 # Max include depth to prevent infinite recursion
 MAX_INCLUDE_DEPTH = 5
 
+MAX_INSTRUCTION_FILE_BYTES = 64 * 1024
+MAX_INSTRUCTION_BUNDLE_BYTES = 256 * 1024
+_FINGERPRINT_VERSION = b"freecad-ai-instruction-bundle-v1"
 
-def load_agents_md() -> str:
-    """Load AGENTS.md from the best available location.
 
-    Search order:
-      1. Active document's directory
-      2. Parent directories (up to 3 levels up)
-      3. User config directory (~/.config/FreeCAD/FreeCADAI/)
+class InstructionLoadError(ValueError):
+    """The selected instruction bundle could not be loaded safely."""
 
-    Returns the processed file contents (with includes resolved and
-    variables substituted), or an empty string if not found.
-    """
-    content = ""
 
-    # Try document directory and parents
+@dataclass(frozen=True)
+class InstructionBundle:
+    root: str
+    source_path: str
+    content: str
+    fingerprint: str
+    manifest: tuple[str, ...]
+
+
+def _selected_instruction_source() -> str | None:
+    """Return the selected instruction file without reading its contents."""
     doc_dir = _get_document_directory()
     if doc_dir:
-        content = _search_directory_chain(doc_dir)
+        current = os.path.realpath(doc_dir)
+        for _ in range(MAX_PARENT_LEVELS + 1):
+            for filename in INSTRUCTION_FILENAMES:
+                path = os.path.join(current, filename)
+                if os.path.lexists(path):
+                    return path
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
 
-    # Fallback to user config directory
-    if not content:
-        content = _load_from_directory(CONFIG_DIR)
+    config_root = os.path.realpath(CONFIG_DIR)
+    for filename in INSTRUCTION_FILENAMES:
+        path = os.path.join(config_root, filename)
+        if os.path.lexists(path):
+            return path
+    return None
 
-    if not content:
+
+def _frame_digest(digest, value: bytes) -> None:
+    digest.update(len(value).to_bytes(8, "big"))
+    digest.update(value)
+
+
+def _path_has_symlink(root: str, path: str) -> bool:
+    """Return whether a path component below canonical root is a symlink."""
+    relative = os.path.relpath(os.path.abspath(path), root)
+    current = root
+    for part in relative.split(os.sep):
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            return True
+    return False
+
+
+def discover_instruction_bundle() -> InstructionBundle | None:
+    """Capture a bounded, canonical instruction bundle or raise fail-closed."""
+    selected = _selected_instruction_source()
+    if selected is None:
+        return None
+
+    root = os.path.realpath(os.path.dirname(selected))
+    source_path = os.path.realpath(selected)
+    manifest = []
+    fingerprint_parts = []
+    active_paths = set()
+    expanded_bytes = 0
+
+    def expand(path: str, depth: int) -> str:
+        nonlocal expanded_bytes
+        if depth > MAX_INCLUDE_DEPTH:
+            raise InstructionLoadError("Instruction include depth exceeds limit")
+        if "\x00" in path:
+            raise InstructionLoadError("Instruction include path contains NUL")
+
+        lexical_path = os.path.abspath(path)
+        canonical_path = os.path.realpath(lexical_path)
+        try:
+            contained = os.path.commonpath((root, canonical_path)) == root
+        except ValueError as exc:
+            raise InstructionLoadError("Instruction path is outside project root") from exc
+        if not contained:
+            raise InstructionLoadError("Instruction path is outside project root")
+        if _path_has_symlink(root, lexical_path):
+            raise InstructionLoadError("Instruction symlinks are not allowed")
+        try:
+            mode = os.stat(lexical_path, follow_symlinks=False).st_mode
+        except OSError as exc:
+            raise InstructionLoadError("Instruction file is unavailable") from exc
+        if not stat.S_ISREG(mode):
+            raise InstructionLoadError("Instruction target is not a regular file")
+        if canonical_path in active_paths:
+            raise InstructionLoadError("Instruction include cycle detected")
+
+        try:
+            with open(lexical_path, "rb") as stream:
+                raw = stream.read(MAX_INSTRUCTION_FILE_BYTES + 1)
+        except OSError as exc:
+            raise InstructionLoadError("Instruction file could not be read") from exc
+        if len(raw) > MAX_INSTRUCTION_FILE_BYTES:
+            raise InstructionLoadError("Instruction file exceeds size limit")
+        expanded_bytes += len(raw)
+        if expanded_bytes > MAX_INSTRUCTION_BUNDLE_BYTES:
+            raise InstructionLoadError("Instruction bundle exceeds size limit")
+        try:
+            decoded = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise InstructionLoadError("Instruction file is not valid UTF-8") from exc
+
+        relative = os.path.relpath(canonical_path, root).replace(os.sep, "/")
+        manifest.append(relative)
+        fingerprint_parts.append((relative.encode("utf-8"), raw))
+        active_paths.add(canonical_path)
+        try:
+            def replace_include(match):
+                include_path = match.group(1).strip()
+                if "\x00" in include_path or os.path.isabs(include_path):
+                    raise InstructionLoadError("Invalid instruction include path")
+                return expand(
+                    os.path.join(os.path.dirname(canonical_path), include_path),
+                    depth + 1,
+                )
+
+            return INCLUDE_RE.sub(replace_include, decoded)
+        finally:
+            active_paths.remove(canonical_path)
+
+    content_before_substitution = expand(selected, 0)
+    digest = hashlib.sha256()
+    _frame_digest(digest, _FINGERPRINT_VERSION)
+    for relative, raw in fingerprint_parts:
+        _frame_digest(digest, relative)
+        _frame_digest(digest, raw)
+    fingerprint = "sha256:" + digest.hexdigest()
+    return InstructionBundle(
+        root=root,
+        source_path=source_path,
+        content=_substitute_variables(content_before_substitution),
+        fingerprint=fingerprint,
+        manifest=tuple(manifest),
+    )
+
+
+def _trusted_decision(bundle: InstructionBundle, trust: object) -> str | None:
+    """Validate and return the exact fingerprint-scoped trust decision."""
+    if not isinstance(trust, dict):
+        return None
+    root = bundle.root
+    if os.path.realpath(root) != root:
+        return None
+    record = trust.get(root)
+    if not isinstance(record, dict):
+        return None
+    source = record.get("source")
+    fingerprint = record.get("fingerprint")
+    decision = record.get("decision")
+    timestamp = record.get("timestamp")
+    if not isinstance(source, str) or os.path.realpath(source) != source:
+        return None
+    try:
+        source_is_contained = os.path.commonpath((root, source)) == root
+    except ValueError:
+        return None
+    if not source_is_contained or source != bundle.source_path:
+        return None
+    if not isinstance(fingerprint, str) or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", fingerprint):
+        return None
+    if fingerprint != bundle.fingerprint:
+        return None
+    if decision not in ("allow", "ignore") or not isinstance(timestamp, str):
+        return None
+    return decision
+
+
+def load_agents_md() -> str:
+    """Return content only for the currently and exactly allowed bundle."""
+    try:
+        bundle = discover_instruction_bundle()
+    except InstructionLoadError:
         return ""
-
-    # Process includes relative to where the file was found
-    base_dir = _find_base_dir(doc_dir)
-    content = _resolve_includes(content, base_dir, depth=0)
-
-    # Substitute variables
-    content = _substitute_variables(content)
-
-    return content
+    if bundle is None:
+        return ""
+    cfg = get_config()
+    decision = _trusted_decision(
+        bundle, getattr(cfg, "project_instruction_trust", {}))
+    return bundle.content if decision == "allow" else ""
 
 
 def _search_directory_chain(start_dir: str) -> str:

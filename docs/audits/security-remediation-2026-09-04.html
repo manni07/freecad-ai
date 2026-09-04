@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FreeCAD AI – Security-Remediation 2026-09-04</title>
+  <style>
+    :root { color-scheme: light dark; --ok:#17803d; --hold:#a65f00; --open:#a32222; --line:#8a8a8a55; }
+    body { font: 16px/1.55 system-ui,sans-serif; max-width: 1120px; margin: auto; padding: 2rem; }
+    h1,h2,h3 { line-height: 1.2; } table { width:100%; border-collapse:collapse; margin:1rem 0; }
+    th,td { border:1px solid var(--line); padding:.55rem; text-align:left; vertical-align:top; }
+    code { background:#8882; padding:.08rem .25rem; } pre { background:#8882; padding:1rem; overflow:auto; }
+    .pass { color:var(--ok); font-weight:700; } .hold { color:var(--hold); font-weight:700; }
+    .open { color:var(--open); font-weight:700; } .note { border-left:.35rem solid var(--hold); padding:.6rem 1rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Security-Remediation-Bericht</h1>
+  <p>FreeCAD AI · Stand 2026-09-04 · Basis <code>15774022a1c981335135d95928bd6cb4f7ba0431</code></p>
+  <p class="note"><strong>Ergebnis:</strong> Die sieben Auditbefunde wurden im Code und durch isolierte Unit-/Loopback-Tests adressiert. Der technische Implementierungsstand ist <span class="pass">PASS</span>. Das Release bleibt <span class="hold">HOLD</span>, bis FreeCAD-GUI, reale Host-Laufzeit, echter Host-SBOM-Scan und weitere unten genannte Systemprüfungen belegt sind.</p>
+</header>
+
+<main>
+<section>
+  <h2>Bezug und Unveränderlichkeit</h2>
+  <p>Quelle ist der unveränderte Bericht <a href="security-audit-2026-09-04.html">security-audit-2026-09-04.html</a> mit SHA-256 <code>d41a1861a11a366a07d4f966185fad8d8b2ae7c7cf87bf5f2a9c3957c43e1ad0</code>. Dieser Nachbericht ersetzt oder überschreibt das Audit nicht.</p>
+</section>
+
+<section>
+  <h2>Umgesetzte Kontrollen</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Auditrisiko</th><th>Implementierung</th><th>Verifizierter Stand</th></tr></thead>
+    <tbody>
+      <tr><td>SEC-01</td><td>Kritisch: Modell-Codeausführung</td><td><code>execute_code</code> ist standardmäßig aus GUI-Schema und Prompt entfernt, in HTTP immer ausgeschlossen und nur über einen nicht persistenten GUI-Schalter sichtbar. Jeder Aufruf wird am Ausführungsrand erneut geprüft und einzeln angezeigt. Ablehnung beendet den Tool-Batch protokollkonform.</td><td class="pass">Unit PASS; reale Dokumentmutation HOLD</td></tr>
+      <tr><td>SEC-02</td><td>Hoch: AGENTS-Include-Dateileck</td><td>Kanonische Root-Grenze, keine absoluten/Traversal-/Symlink-Ziele, nur reguläre UTF-8-Dateien, Zyklus-/Tiefen-/Größenlimits, deterministischer Fingerprint und explizite Vorschauentscheidung. Gesendet wird nur der genehmigte Speicher-Snapshot.</td><td class="pass">Hostile-path-Matrix PASS; FreeCAD-Dialog HOLD</td></tr>
+      <tr><td>SEC-03</td><td>Hoch: unauthentisiertes HTTP-MCP</td><td>Hochentropisches Bearer-Token pro Installation, Authentisierung aller Pfade/Verben, private eindeutige numerische Bindung, Host/Origin-Prüfung, globales Token-Bucket-Limit und acht vor Thread-Erzeugung reservierte Slots. HTTP enthält kein <code>execute_code</code>.</td><td class="pass">Authentifizierte Loopback-Fixtures PASS; Live-FreeCAD/LAN HOLD</td></tr>
+      <tr><td>SEC-04</td><td>Hoch: ungeprüfter TLS-Fallback</td><td>Kein unverified SSL-Kontext. HTTPS bricht bei fehlendem verifiziertem Kontext vor Netzwerkzugriff ab; Fehlertexte redigieren Schlüssel, Authorization und URL-Query. Lokales HTTP bleibt möglich.</td><td class="pass">POST/Stream/Redaction PASS</td></tr>
+      <tr><td>SEC-05</td><td>Mittel: unsichere Tempnamen</td><td>Privater <code>0700</code>-Workspace, exklusive <code>0600</code>-Dateien, eindeutige Pfade, Typ-/Identitätsprüfung und Cleanup auf Erfolg, Timeout und Fehler.</td><td class="pass">Race-/Cleanup-/Statusmatrix PASS</td></tr>
+      <tr><td>SEC-06</td><td>Mittel: Secrets und Logs</td><td>Private atomare Writes, POSIX-Mode-Härtung, verlustfreie Literal-Secret-Migration mit Readback/Rollback, Metadatenlogs als Default und rekursive Redaction beim Full-Opt-in.</td><td class="pass">Failure injection PASS; Windows ACL HOLD</td></tr>
+      <tr><td>SEC-07</td><td>Niedrig: Runtime-/SBOM-Blindstelle</td><td>Versionen und Python <code>&gt;=3.11</code> synchronisiert, Paketfindung begrenzt, PyPI-Runtime-Abhängigkeiten explizit leer, Hostkomponenten separat deklariert und CycloneDX-1.5-Generator für Add-on/FreeCAD/Python/PySide/Qt implementiert.</td><td class="pass">Generator/Schema PASS; echter Host/CVE-Scan HOLD</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Verifikation</h2>
+  <ul>
+    <li><strong>Finaler Unit-Lauf:</strong> 1.556 bestanden, 0 fehlgeschlagen, 0 übersprungen in 113,68 s. Der separate Branch-Coverage-Lauf bestand dieselben 1.556 Tests in 131,40 s; Diff-Coverage 97% über 862 geänderte Zeilen, 24 nicht getroffen.</li>
+    <li><strong>Fokussierte Phase F:</strong> 55/55 bestanden; CycloneDX-1.5-Struktur mit genau fünf Komponenten und fünf Dependency-Einträgen validiert.</li>
+    <li><strong>Critical Ruff:</strong> <code>E9,F63,F7,F82</code> ohne Befund. Der vollständige projektweite Ruff-Lauf bleibt ein nicht-gatendes Bestands-Backlog und wird nicht als grün dargestellt.</li>
+    <li><strong>Bandit:</strong> 3 High, 7 Medium, 89 Low. Die drei Highs sind kontextuell geprüft: SHA1 für Backup-Dateinamen, MD5 für Änderungsdetektion und <code>shell=True</code> ausschließlich für die explizite benutzerverwaltete <code>cmd:</code>-Secret-Funktion. Keine <code>#nosec</code>-Unterdrückung.</li>
+    <li><strong>Declared-PyPI-Audit:</strong> <code>pip-audit --strict --disable-pip --no-deps -r &lt;empty&gt;</code> ohne bekannte Schwachstelle. Das beweist nur die explizit leere PyPI-Runtime-Menge, nicht den FreeCAD-Host.</li>
+    <li><strong>Packaging:</strong> Editable Installation ohne Dependencies erfolgreich; importierte Version <code>0.23.1a0</code>; Top-Level-Paket ausschließlich <code>freecad_ai</code>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Security-Betriebsmodell</h2>
+  <h3>AI-Python</h3>
+  <p>Freischaltung gilt nur für den laufenden Prozess und ist unabhängig vom Dangerous Mode. Sie ist kein Sandbox-Versprechen: genehmigter Python-Code besitzt die Rechte des FreeCAD-Benutzers. Die Vorprüfung unterscheidet <code>PASSED</code>, <code>REJECTED</code>, <code>UNAVAILABLE</code> und <code>ERROR</code>; <code>REJECTED</code> ist nie übersteuerbar. Nur bei nicht verfügbarer/fehlerhafter Vorprüfung kann der Benutzer nach einer zweiten Warnung fortfahren.</p>
+  <h3>HTTP-MCP</h3>
+  <p>Der Server meldet nur den Token-Dateipfad. Clients senden <code>Authorization: Bearer …</code>. Ein benutzerdefinierter Tokenpfad wird niemals erzeugt oder geändert. Private-LAN-HTTP bietet keine Transportverschlüsselung; gleiche-LAN-Tokenmitschnitt bleibt ein akzeptierter offener Rest. STDIO behält <code>execute_code</code>, authentifiziertes HTTP behält <code>run_macro</code>.</p>
+  <h3>Projektanweisungen und Daten</h3>
+  <p>AGENTS-/FREECAD_AI-Inhalte sind untrusted Daten und werden nur nach Vorschau des exakten Fingerprints übernommen. Standardlogs enthalten keine Nachrichten, Argumente oder Tool-Ergebnisse. Full-Logging ist explizites Opt-in und redigiert bekannte Secretfelder und konfigurierte Literalwerte.</p>
+</section>
+
+<section>
+  <h2>Offene Gates</h2>
+  <ol>
+    <li>GUI-/Integrationstest in einer unterstützten FreeCAD-Laufzeit, einschließlich einmaliger genehmigter Mutation eines wegwerfbaren Dokuments.</li>
+    <li>Authentifizierter positiver und negativer MCP-Handshake im laufenden FreeCAD, ohne einen vorhandenen Prozess neu zu starten.</li>
+    <li>Actual-host-SBOM mit echten FreeCAD-/Python-/PySide-/Qt-Versionen und externer Grype-/Trivy-CVE-Prüfung.</li>
+    <li>Isolierter Private-LAN-Test; Loopback-Fixtures sind kein LAN-Beleg.</li>
+    <li>Windows-ACL- und POSIX-dirfd-Äquivalenz; Actions SHA-/transitive Hash-Pins.</li>
+    <li>Projektweite Ruff- sowie Bandit-Medium/Low-Schulden.</li>
+    <li>Defense-in-depth: descriptor-pinned <code>open</code>/<code>fstat</code> für AGENTS-Dateien gegen lokale Pfadtausch-Races; Fingerprint und Vorschau verhindern bereits ungeprüften Provider-Versand.</li>
+  </ol>
+  <p>Die exakte Integrationsprobe wurde ausgeführt, sammelte jedoch ausschließlich 88 Skips mit <code>FreeCAD AppImage not found</code>. Ihr Exitcode 0 ist ausdrücklich kein PASS und bestätigt den Runtime-Blocker.</p>
+  <p>Details, Stopregeln und Fortsetzungsbefehle stehen im Session Transfer Protocol und im Open-Item-Bericht. Kein Git-Merge und kein Release ist aus diesem Bericht abgeleitet.</p>
+</section>
+</main>
+</body>
+</html>

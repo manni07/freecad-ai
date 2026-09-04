@@ -21,6 +21,13 @@ import pytest
 
 from freecad_ai.mcp.transport import SSEServerTransport
 
+TOKEN = "test-only-token-" + "A" * 32
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+
+
+def _transport(**kwargs):
+    return SSEServerTransport(bearer_token=TOKEN, **kwargs)
+
 
 # ---------------------------------------------------------------------------
 # Issue A — concurrent SSE writes must hold the lock
@@ -51,7 +58,7 @@ class _LockProbe:
 
 
 def test_send_sse_holds_lock_during_write():
-    transport = SSEServerTransport()
+    transport = _transport()
     probe = _LockProbe(transport._sse_lock)
     transport._sse_wfile = probe
 
@@ -61,7 +68,7 @@ def test_send_sse_holds_lock_during_write():
 
 
 def test_send_sse_frames_message_as_sse_event():
-    transport = SSEServerTransport()
+    transport = _transport()
     probe = _LockProbe(transport._sse_lock)
     transport._sse_wfile = probe
 
@@ -74,7 +81,7 @@ def test_send_sse_frames_message_as_sse_event():
 
 
 def test_write_locked_holds_lock_during_write():
-    transport = SSEServerTransport()
+    transport = _transport()
     probe = _LockProbe(transport._sse_lock)
     transport._sse_wfile = probe
 
@@ -84,14 +91,14 @@ def test_write_locked_holds_lock_during_write():
 
 
 def test_write_locked_returns_false_without_client():
-    transport = SSEServerTransport()
+    transport = _transport()
     transport._sse_wfile = None
 
     assert transport._write_locked(b"data") is False
 
 
 def test_write_locked_clears_client_on_broken_pipe():
-    transport = SSEServerTransport()
+    transport = _transport()
 
     class _Broken:
         def write(self, data):
@@ -111,36 +118,36 @@ def test_write_locked_clears_client_on_broken_pipe():
 # ---------------------------------------------------------------------------
 
 def test_request_allowed_for_loopback_native_client():
-    transport = SSEServerTransport()
+    transport = _transport()
     # Native MCP clients connect over loopback and send no Origin header.
     assert transport._request_allowed("127.0.0.1:3000", None) is True
     assert transport._request_allowed("localhost:3000", None) is True
 
 
 def test_request_allowed_for_ipv6_loopback():
-    transport = SSEServerTransport()
+    transport = _transport()
     assert transport._request_allowed("[::1]:3000", None) is True
 
 
 def test_request_rejected_for_cross_origin_browser_request():
-    transport = SSEServerTransport()
+    transport = _transport()
     # A malicious web page's fetch() to localhost always carries an Origin.
     assert transport._request_allowed("127.0.0.1:3000", "https://evil.example") is False
 
 
 def test_request_rejected_for_non_loopback_host_dns_rebinding():
-    transport = SSEServerTransport()
+    transport = _transport()
     assert transport._request_allowed("evil.example", None) is False
 
 
 def test_request_rejected_for_missing_host():
-    transport = SSEServerTransport()
+    transport = _transport()
     assert transport._request_allowed(None, None) is False
     assert transport._request_allowed("", None) is False
 
 
 def test_request_allows_explicitly_configured_bind_host():
-    transport = SSEServerTransport(host="192.168.1.5")
+    transport = _transport(host="192.168.1.5")
     assert transport._request_allowed("192.168.1.5:3000", None) is True
 
 
@@ -151,17 +158,17 @@ def test_wildcard_bind_host_rejected_instead_of_locking_out_every_client(
     # ever carries, so seeding the default allowlist from it locks out every
     # LAN client instead of the loopback-only client it was meant to guard.
     with pytest.raises(OSError, match="MCP_HOST"):
-        SSEServerTransport(host=wildcard_host)
+        _transport(host=wildcard_host)
 
 
 def test_wildcard_bind_host_allowed_with_explicit_allowed_hosts():
-    transport = SSEServerTransport(
+    transport = _transport(
         host="0.0.0.0", allowed_hosts=["fileserver.local"])
     assert transport._request_allowed("fileserver.local:3000", None) is True
 
 
 def test_cross_origin_post_rejected_and_no_wildcard_cors_header():
-    transport = SSEServerTransport(host="127.0.0.1", port=0)
+    transport = _transport(host="127.0.0.1", port=0)
     transport._handler = lambda msg: {
         "jsonrpc": "2.0", "id": msg.get("id"), "result": {}
     }
@@ -175,6 +182,7 @@ def test_cross_origin_post_rejected_and_no_wildcard_cors_header():
             f"http://127.0.0.1:{port}/messages",
             data=b'{"jsonrpc":"2.0","id":1,"method":"ping"}',
             headers={"Content-Type": "application/json",
+                     **AUTH,
                      "Origin": "https://evil.example"},
             method="POST",
         )
@@ -187,7 +195,7 @@ def test_cross_origin_post_rejected_and_no_wildcard_cors_header():
         native = urllib.request.Request(
             f"http://127.0.0.1:{port}/messages",
             data=b'{"jsonrpc":"2.0","id":1,"method":"ping"}',
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **AUTH},
             method="POST",
         )
         resp = urllib.request.urlopen(native, timeout=5)
@@ -252,7 +260,7 @@ def test_bind_raises_when_the_port_is_taken():
     blocker.listen(1)
     port = blocker.getsockname()[1]
     try:
-        transport = SSEServerTransport(host="127.0.0.1", port=port)
+        transport = _transport(host="127.0.0.1", port=port)
         with pytest.raises(OSError):
             transport.bind()
     finally:
@@ -260,7 +268,7 @@ def test_bind_raises_when_the_port_is_taken():
 
 
 def test_bind_is_idempotent():
-    transport = SSEServerTransport(host="127.0.0.1", port=_free_port())
+    transport = _transport(host="127.0.0.1", port=_free_port())
     try:
         transport.bind()
         transport.bind()  # must not raise "address already in use" against itself
@@ -270,11 +278,11 @@ def test_bind_is_idempotent():
 
 def test_stop_releases_the_socket():
     port = _free_port()
-    first = SSEServerTransport(host="127.0.0.1", port=port)
+    first = _transport(host="127.0.0.1", port=port)
     first.bind()
     first.stop()
 
-    second = SSEServerTransport(host="127.0.0.1", port=port)
+    second = _transport(host="127.0.0.1", port=port)
     try:
         second.bind()  # must not raise — the first one really let go
     finally:
@@ -282,7 +290,7 @@ def test_stop_releases_the_socket():
 
 
 def test_stop_without_bind_does_not_raise():
-    SSEServerTransport(host="127.0.0.1", port=_free_port()).stop()
+    _transport(host="127.0.0.1", port=_free_port()).stop()
 
 
 def test_stop_after_bind_without_serve_does_not_hang():
@@ -291,7 +299,7 @@ def test_stop_after_bind_without_serve_does_not_hang():
     Calling it on a bound-but-never-served socket blocks forever, so this
     fails as a timeout rather than an assertion if stop() gets it wrong.
     """
-    transport = SSEServerTransport(host="127.0.0.1", port=_free_port())
+    transport = _transport(host="127.0.0.1", port=_free_port())
     transport.bind()
     finished = threading.Event()
 
@@ -304,7 +312,7 @@ def test_stop_after_bind_without_serve_does_not_hang():
 
 
 def test_serve_before_bind_raises_runtime_error():
-    transport = SSEServerTransport(host="127.0.0.1", port=_free_port())
+    transport = _transport(host="127.0.0.1", port=_free_port())
     with pytest.raises(RuntimeError):
         transport.serve(lambda msg: None)
 
@@ -312,7 +320,7 @@ def test_serve_before_bind_raises_runtime_error():
 def test_run_still_binds_and_serves():
     """run() must keep working unchanged — entry scripts and users call it."""
     port = _free_port()
-    transport = SSEServerTransport(host="127.0.0.1", port=port)
+    transport = _transport(host="127.0.0.1", port=port)
     thread = threading.Thread(
         target=transport.run, args=(lambda msg: None,), daemon=True)
     thread.start()
@@ -345,13 +353,17 @@ def test_http_entry_point_delegates_to_the_shared_controller(monkeypatch):
     fake_freecad = types.ModuleType("FreeCAD")
     fake_freecad.ActiveDocument = object()
     fake_freecad.newDocument = lambda name: None
+    fake_freecad.ParamGet = lambda path: (_ for _ in ()).throw(
+        RuntimeError("no parameter store in tests"))
     monkeypatch.setitem(sys.modules, "FreeCAD", fake_freecad)
 
     started = []
 
     class _FakeController:
-        def start(self, host, port, allowed_hosts=None):
-            started.append((host, port, allowed_hosts))
+        token_file_path = "/test-only/mcp.token"
+
+        def start(self, host, port, allowed_hosts=None, cfg=None):
+            started.append((host, port, allowed_hosts, cfg))
             return "http://%s:%d/sse" % (host, port)
 
     import freecad_ai.mcp.gui_server as gui_server
@@ -368,7 +380,9 @@ def test_http_entry_point_delegates_to_the_shared_controller(monkeypatch):
 
     # allowed_hosts stays None with nothing configured, so the transport keeps
     # deriving its own default — and with it the wildcard-bind rejection.
-    assert started == [("127.0.0.1", 3131, None)]
+    assert len(started) == 1
+    assert started[0][:3] == ("127.0.0.1", 3131, None)
+    assert started[0][3] is not None
 
 
 def test_http_entry_point_forwards_the_allowed_hosts_env_var(monkeypatch):
@@ -379,13 +393,17 @@ def test_http_entry_point_forwards_the_allowed_hosts_env_var(monkeypatch):
     fake_freecad = types.ModuleType("FreeCAD")
     fake_freecad.ActiveDocument = object()
     fake_freecad.newDocument = lambda name: None
+    fake_freecad.ParamGet = lambda path: (_ for _ in ()).throw(
+        RuntimeError("no parameter store in tests"))
     monkeypatch.setitem(sys.modules, "FreeCAD", fake_freecad)
 
     started = []
 
     class _FakeController:
-        def start(self, host, port, allowed_hosts=None):
-            started.append((host, port, allowed_hosts))
+        token_file_path = "/test-only/mcp.token"
+
+        def start(self, host, port, allowed_hosts=None, cfg=None):
+            started.append((host, port, allowed_hosts, cfg))
             return "http://%s:%d/sse" % (host, port)
 
     import freecad_ai.mcp.gui_server as gui_server
@@ -398,8 +416,10 @@ def test_http_entry_point_forwards_the_allowed_hosts_env_var(monkeypatch):
 
     exec(compile(source, "mcp_server_http.py", "exec"), {})
 
-    assert started == [("192.168.1.50", 3131,
-                        ["fileserver.local", "192.168.1.50"])]
+    assert len(started) == 1
+    assert started[0][:3] == (
+        "192.168.1.50", 3131, ["fileserver.local", "192.168.1.50"])
+    assert started[0][3] is not None
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +440,7 @@ def test_http_entry_point_forwards_the_allowed_hosts_env_var(monkeypatch):
 
 def test_sse_connection_has_a_send_timeout():
     """Without this the write blocks forever and stop() can never get the lock."""
-    transport = SSEServerTransport(port=0)
+    transport = _transport(port=0)
     transport.bind()
     try:
         handler_cls = transport._httpd.RequestHandlerClass
@@ -444,7 +464,7 @@ def test_write_locked_drops_the_client_on_timeout():
         def flush(self):  # pragma: no cover - never reached
             pass
 
-    transport = SSEServerTransport()
+    transport = _transport()
     transport._sse_wfile = _TimingOutWfile()
 
     assert transport._write_locked(b"payload") is False

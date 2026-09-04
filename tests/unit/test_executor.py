@@ -1,18 +1,23 @@
 """Tests for code execution engine — extract, validate, and safety checks."""
 
+import ast
+import concurrent.futures
+import json
 import os
+import re
 import sys
+import tempfile
+import threading
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from unittest.mock import MagicMock, patch
 
 from freecad_ai.core import executor
 from freecad_ai.core.executor import (
     ExecutionResult,
+    _validate_code,
     extract_code_blocks,
     validate_code,
-    _validate_code,
 )
 
 
@@ -157,23 +162,33 @@ class TestValidateCodePublic:
         assert "os.system" in result.stderr
         assert result.code == dangerous
 
+    def test_preflight_result_retains_legacy_tuple_unpacking_contract(self):
+        result = executor.PreflightResult(
+            executor.PreflightStatus.ERROR, "infrastructure failed", "x = 1")
+
+        safe, message = result
+
+        assert safe is False
+        assert message == "infrastructure failed"
+
     def test_static_failure_mentions_static_validation(self):
         # The stderr prefix distinguishes static from sandbox failures so the
         # UI (and the LLM, when Fix fires) knows which layer complained.
         result = validate_code("subprocess.run(['x'])")
         assert "Static validation" in result.stderr
 
-    def test_passes_when_sandbox_unavailable(self):
-        # If no FreeCAD binary is on the system, _sandbox_test returns
-        # (True, "") — validate_code should surface that as a pass.
+    def test_missing_sandbox_is_reported_as_unavailable(self):
+        # Missing validation infrastructure must never be represented as a
+        # successful safety decision.
         with patch("freecad_ai.core.executor._find_freecad_cmd", return_value=""):
             with patch(
                 "freecad_ai.core.active_document.get_synced_active_document",
                 return_value=None,
             ):
                 result = validate_code("import FreeCAD as App\ndoc = App.newDocument()")
-        assert result.success is True
-        assert result.stderr == ""
+        status = getattr(result, "status", None)
+        assert getattr(status, "value", status) == "unavailable"
+        assert "unavailable" in getattr(result, "message", "").lower()
 
     def test_sandbox_failure_propagates_error(self):
         # Simulate a sandbox-detected error; validate_code should wrap it.
@@ -227,6 +242,22 @@ class TestSkipSafety:
         code = "import subprocess\nsubprocess.run(['ls'])"
         res = executor.validate_code(code, skip_safety=True)
         assert res.success is True
+
+    def test_rejected_preflight_cannot_be_overridden_at_execution_edge(self):
+        """The GUI override flag applies only to unavailable/error infrastructure."""
+        rejected = executor.PreflightResult(
+            executor.PreflightStatus.REJECTED, "unsafe", "x = 1")
+        with patch(
+            "freecad_ai.core.executor._sandbox_test", return_value=rejected
+        ), patch(
+            "freecad_ai.core.active_document.get_synced_active_document",
+            return_value=None,
+        ), patch("builtins.exec") as live_exec:
+            result = executor.execute_code("x = 1", allow_unvalidated=True)
+
+        assert result.success is False
+        assert result.stderr == "unsafe"
+        live_exec.assert_not_called()
 
 
 class TestSandboxTimeout:
@@ -305,6 +336,250 @@ class TestSandboxHarnessForcesExit:
             "its result, or the FreeCAD subprocess can hang until timeout "
             "(issue #14)"
         )
+
+    def test_sandbox_uses_a_private_directory_instead_of_mktemp(self):
+        """Predictable sibling paths must not carry executable preflight code."""
+        class _FakeProc:
+            returncode = 0
+
+        with patch(
+            "freecad_ai.core.executor._find_freecad_cmd",
+            return_value="/usr/bin/freecadcmd",
+        ), patch(
+            "freecad_ai.core.executor.subprocess.run",
+            return_value=_FakeProc(),
+        ), patch(
+            "freecad_ai.core.executor.tempfile.mktemp",
+            wraps=tempfile.mktemp,
+        ) as insecure_name, patch(
+            "freecad_ai.core.executor.tempfile.TemporaryDirectory",
+            wraps=tempfile.TemporaryDirectory,
+        ) as private_dir:
+            executor._sandbox_test("x = 1", timeout=5)
+
+        assert private_dir.call_count == 1
+        assert insecure_name.call_count == 0
+
+    def test_private_workspace_modes_and_cleanup_cover_generated_result(self):
+        """Every preflight artifact is private and the whole workspace is removed."""
+        observed = {}
+
+        class _FakeProc:
+            returncode = 0
+            stderr = b""
+
+        def fake_run(command, **kwargs):
+            script = command[-1]
+            result = _result_path_from_harness(script)
+            old_umask = os.umask(0o022)
+            try:
+                with open(result, "w") as stream:
+                    stream.write('{"ok": true, "error": ""}')
+            finally:
+                os.umask(old_umask)
+            observed.update(
+                root=os.path.dirname(script),
+                root_mode=os.stat(os.path.dirname(script)).st_mode & 0o777,
+                script_mode=os.stat(script).st_mode & 0o777,
+                result_mode=os.stat(result).st_mode & 0o777,
+            )
+            return _FakeProc()
+
+        with patch("freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"), patch(
+            "freecad_ai.core.executor.subprocess.run", side_effect=fake_run
+        ):
+            result = executor._sandbox_test("x = 1")
+
+        assert result.status is executor.PreflightStatus.PASSED
+        assert observed["root_mode"] == 0o700
+        assert observed["script_mode"] == 0o600
+        assert observed["result_mode"] == 0o600
+        assert not os.path.exists(observed["root"])
+
+    def test_active_document_is_copied_into_private_workspace(self, tmp_path):
+        source = tmp_path / "model.FCStd"
+        source.write_bytes(b"document bytes")
+        observed = {}
+
+        def fake_run(command, **kwargs):
+            script = command[-1]
+            private_copy = os.path.join(os.path.dirname(script), "document.FCStd")
+            with open(private_copy, "rb") as stream:
+                observed["copy"] = stream.read()
+            observed["mode"] = os.stat(private_copy).st_mode & 0o777
+            _write_success_result(script)
+            return type("Proc", (), {"returncode": 0, "stderr": b""})()
+
+        with patch(
+            "freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"
+        ), patch(
+            "freecad_ai.core.executor.subprocess.run", side_effect=fake_run
+        ):
+            result = executor._sandbox_test("x = 1", document_path=str(source))
+
+        assert result.status is executor.PreflightStatus.PASSED
+        assert observed == {"copy": b"document bytes", "mode": 0o600}
+
+    def test_workspace_setup_failure_cleans_created_directory(self):
+        roots = []
+        real_temporary_directory = tempfile.TemporaryDirectory
+        real_os_open = os.open
+
+        def fail_result_creation(path, *args, **kwargs):
+            if os.path.basename(os.fspath(path)) == "result.json":
+                raise OSError("create denied")
+            return real_os_open(path, *args, **kwargs)
+
+        class FailingWorkspace:
+            def __init__(self, prefix):
+                self._ctx = real_temporary_directory(prefix=prefix)
+                self.name = self._ctx.name
+                roots.append(self.name)
+
+            def cleanup(self):
+                self._ctx.cleanup()
+
+        with patch(
+            "freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"
+        ), patch(
+            "freecad_ai.core.executor.tempfile.TemporaryDirectory", FailingWorkspace
+        ), patch(
+            "freecad_ai.core.executor.os.open", side_effect=fail_result_creation
+        ):
+            result = executor._sandbox_test("x = 1")
+
+        assert result.status is executor.PreflightStatus.ERROR
+        assert roots and all(not os.path.exists(root) for root in roots)
+
+    @pytest.mark.parametrize(
+        ("returncode", "expected"),
+        [(-9, "SIGKILL"), (-123, "123")],
+    )
+    def test_sandbox_reports_known_and_unknown_process_signals(
+            self, returncode, expected):
+        proc = type("Proc", (), {"returncode": returncode, "stderr": b""})()
+        with patch(
+            "freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"
+        ), patch("freecad_ai.core.executor.subprocess.run", return_value=proc):
+            result = executor._sandbox_test("x = 1")
+
+        assert result.status is executor.PreflightStatus.REJECTED
+        assert expected in result.message
+
+    def test_sandbox_rejects_structured_unsuccessful_result(self):
+        def fake_run(command, **kwargs):
+            result_path = _result_path_from_harness(command[-1])
+            with open(result_path, "w") as stream:
+                json.dump({"ok": False, "error": "invalid geometry"}, stream)
+            return type("Proc", (), {"returncode": 0, "stderr": b""})()
+
+        with patch(
+            "freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"
+        ), patch(
+            "freecad_ai.core.executor.subprocess.run", side_effect=fake_run
+        ):
+            result = executor._sandbox_test("x = 1")
+
+        assert result.status is executor.PreflightStatus.REJECTED
+        assert "invalid geometry" in result.message
+
+    @pytest.mark.parametrize("failure", ["timeout", "malformed", "exception"])
+    def test_private_workspace_is_cleaned_for_every_harness_failure(self, failure):
+        roots = []
+
+        def fake_run(command, **kwargs):
+            roots.append(os.path.dirname(command[-1]))
+            if failure == "timeout":
+                raise executor.subprocess.TimeoutExpired(command, 1)
+            if failure == "exception":
+                raise RuntimeError("harness broke")
+            with open(_result_path_from_harness(command[-1]), "w") as stream:
+                stream.write("not-json")
+            return type("Proc", (), {"returncode": 0, "stderr": b""})()
+
+        with patch("freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"), patch(
+            "freecad_ai.core.executor.subprocess.run", side_effect=fake_run
+        ):
+            result = executor._sandbox_test("x = 1", timeout=1)
+
+        expected = (executor.PreflightStatus.REJECTED if failure == "timeout"
+                    else executor.PreflightStatus.ERROR)
+        assert result.status is expected
+        assert roots and all(not os.path.exists(root) for root in roots)
+
+    @pytest.mark.parametrize(
+        ("kind", "expected"),
+        [
+            ("passed", executor.PreflightStatus.PASSED),
+            ("rejected", executor.PreflightStatus.REJECTED),
+            ("error", executor.PreflightStatus.ERROR),
+        ],
+    )
+    def test_sandbox_reports_each_available_preflight_status(self, kind, expected):
+        def fake_run(command, **kwargs):
+            if kind == "passed":
+                _write_success_result(command[-1])
+                return type("Proc", (), {"returncode": 0, "stderr": b""})()
+            if kind == "rejected":
+                return type("Proc", (), {"returncode": 1, "stderr": b"unsafe"})()
+            return type("Proc", (), {"returncode": 0, "stderr": b""})()
+
+        with patch("freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"), patch(
+            "freecad_ai.core.executor.subprocess.run", side_effect=fake_run
+        ):
+            result = executor._sandbox_test("x = 1")
+        assert result.status is expected
+
+    def test_sandbox_reports_unavailable_as_the_fourth_status(self):
+        with patch("freecad_ai.core.executor._find_freecad_cmd", return_value=""):
+            result = executor._sandbox_test("x = 1")
+        assert result.status is executor.PreflightStatus.UNAVAILABLE
+
+    def test_concurrent_preflights_use_distinct_private_workspaces(self):
+        barrier = threading.Barrier(2)
+        roots = []
+        lock = threading.Lock()
+
+        def fake_run(command, **kwargs):
+            root = os.path.dirname(command[-1])
+            with lock:
+                roots.append(root)
+            barrier.wait(timeout=2)
+            _write_success_result(command[-1])
+            return type("Proc", (), {"returncode": 0, "stderr": b""})()
+
+        with patch("freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"), patch(
+            "freecad_ai.core.executor.subprocess.run", side_effect=fake_run
+        ), concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: executor._sandbox_test("x = 1"), range(2)))
+
+        assert len(set(roots)) == 2
+        assert all(result.status is executor.PreflightStatus.PASSED for result in results)
+        assert all(not os.path.exists(root) for root in roots)
+
+    def test_preflight_script_cannot_follow_an_injected_symlink(self, tmp_path):
+        victim = tmp_path / "victim.py"
+        victim.write_text("unchanged")
+        created_roots = []
+
+        class InjectedWorkspace:
+            def __init__(self, prefix):
+                self._ctx = tempfile.TemporaryDirectory(prefix=prefix)
+                self.name = self._ctx.name
+                created_roots.append(self.name)
+                os.symlink(victim, os.path.join(self.name, "preflight.py"))
+            def cleanup(self):
+                self._ctx.cleanup()
+
+        with patch("freecad_ai.core.executor._find_freecad_cmd", return_value="freecadcmd"), patch(
+            "freecad_ai.core.executor.tempfile.TemporaryDirectory", InjectedWorkspace
+        ), patch("freecad_ai.core.executor.subprocess.run") as run:
+            result = executor._sandbox_test("x = 1")
+
+        assert result.status is executor.PreflightStatus.ERROR
+        assert victim.read_text() == "unchanged"
+        run.assert_not_called()
+        assert all(not os.path.exists(root) for root in created_roots)
 
 
 class TestConfigurableExecutionTimeout:
@@ -632,6 +907,16 @@ class TestFindFreecadCmd:
         ), patch("glob.glob", return_value=[decoy]):
             assert executor._find_freecad_cmd() == decoy
 
+    def test_falls_back_when_home_bin_cannot_be_listed(self, tmp_path):
+        decoy = "/home/someone/bin/FreeCAD_9.9.9.AppImage"
+        home = str(tmp_path / "usr")
+        with patch.dict(
+            sys.modules, {"FreeCAD": self._app_module(home)}
+        ), patch("freecad_ai.core.executor.os.listdir", side_effect=OSError), patch(
+            "glob.glob", return_value=[decoy]
+        ):
+            assert executor._find_freecad_cmd() == decoy
+
     def test_falls_back_when_freecad_is_not_importable(self, tmp_path):
         # Unit-test context, or any process without FreeCAD on sys.path.
         decoy = "/home/someone/bin/FreeCAD_9.9.9.AppImage"
@@ -682,3 +967,16 @@ class TestSandboxGuiStub:
         # `import FreeCADGui` is the exact statement that segfaults.
         src = self._generated_script()
         assert "import FreeCADGui" not in src
+
+def _result_path_from_harness(script_path):
+    with open(script_path) as stream:
+        text = stream.read()
+    match = re.search(r"with open\((.+?), \"w\"\) as f:\n        json.dump", text)
+    assert match
+    return ast.literal_eval(match.group(1))
+
+
+def _write_success_result(script_path):
+    result_path = _result_path_from_harness(script_path)
+    with open(result_path, "w") as stream:
+        stream.write('{"ok": true, "error": ""}')

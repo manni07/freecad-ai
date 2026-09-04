@@ -13,17 +13,18 @@ import ssl
 import urllib.parse
 from dataclasses import dataclass, field
 
+from .. import __version__
 from .transport import (
-    StdioClientTransport,
-    SSEClientTransport,
-    StreamableHTTPClientTransport,
     _LOOPBACK_HOSTS,
+    SSEClientTransport,
+    StdioClientTransport,
+    StreamableHTTPClientTransport,
 )
 
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2025-03-26"
-CLIENT_INFO = {"name": "FreeCAD AI", "version": "0.1.0"}
+CLIENT_INFO = {"name": "FreeCAD AI", "version": __version__}
 
 
 @dataclass

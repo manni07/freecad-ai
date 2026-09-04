@@ -22,6 +22,7 @@ import sys
 import tempfile
 import traceback
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass
@@ -30,6 +31,44 @@ class ExecutionResult:
     stdout: str
     stderr: str
     code: str
+
+
+class PreflightStatus(str, Enum):
+    PASSED = "passed"
+    REJECTED = "rejected"
+    UNAVAILABLE = "unavailable"
+    ERROR = "error"
+
+
+class PreflightResult(ExecutionResult):
+    """ExecutionResult-compatible outcome with an explicit preflight status."""
+
+    def __init__(self, status: PreflightStatus, message: str, code: str):
+        super().__init__(
+            success=status is PreflightStatus.PASSED,
+            stdout="",
+            stderr=message,
+            code=code,
+        )
+        self.status = status
+        self.message = message
+
+    @property
+    def passed(self) -> bool:
+        return self.status is PreflightStatus.PASSED
+
+    def __iter__(self):
+        yield self.passed
+        yield self.message
+
+
+def _coerce_preflight(value, code: str) -> PreflightResult:
+    """Accept the historical tuple shape from patched callers/tests."""
+    if isinstance(value, PreflightResult):
+        return value
+    safe, message = value
+    status = PreflightStatus.PASSED if safe else PreflightStatus.REJECTED
+    return PreflightResult(status, message, code)
 
 
 # Fence tags we treat as executable Python. Deliberately narrow: this text is
@@ -94,8 +133,19 @@ def _find_freecad_cmd() -> str:
         import FreeCAD as _App
         home = _App.getHomePath()
         if home:
-            for name in ("freecadcmd", "FreeCADCmd", "freecadcmd.exe", "FreeCADCmd.exe"):
-                candidate = os.path.join(home, "bin", name)
+            bin_dir = os.path.join(home, "bin")
+            try:
+                entries = os.listdir(bin_dir)
+            except OSError:
+                entries = []
+            preferred = ("freecadcmd", "FreeCADCmd",
+                         "freecadcmd.exe", "FreeCADCmd.exe")
+            ordered = [name for name in preferred if name in entries]
+            ordered.extend(
+                entry for wanted in preferred for entry in entries
+                if entry.casefold() == wanted.casefold() and entry not in ordered)
+            for name in ordered:
+                candidate = os.path.join(bin_dir, name)
                 if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                     return candidate
     except Exception:
@@ -176,18 +226,43 @@ def _collect_object_issues(objects_state, baseline_bad):
     return issues
 
 
-def _sandbox_test(code: str, timeout: int = 15, document_path: str | None = None) -> tuple:
+def _sandbox_test(code: str, timeout: int = 15,
+                  document_path: str | None = None) -> PreflightResult:
     """Test code in a headless FreeCAD subprocess.
 
-    Returns (safe: bool, error_message: str).
-    If FreeCAD console is not available, returns (True, "") to skip sandboxing.
+    Returns an explicit status; unavailable infrastructure is never a pass.
     """
     freecad_bin = _find_freecad_cmd()
     if not freecad_bin:
-        return True, ""  # Can't sandbox, let it through
+        return PreflightResult(
+            PreflightStatus.UNAVAILABLE,
+            "Preflight unavailable: FreeCADCmd was not found.", code)
 
-    result_file = tempfile.mktemp(suffix=".json")
-    script_file = tempfile.mktemp(suffix=".py")
+    temp_ctx = None
+    try:
+        temp_ctx = tempfile.TemporaryDirectory(prefix="freecad-ai-")
+        temp_dir = temp_ctx.name
+        os.chmod(temp_dir, 0o700)
+        result_file = os.path.join(temp_dir, "result.json")
+        script_file = os.path.join(temp_dir, "preflight.py")
+        fd = os.open(
+            result_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
+        if document_path:
+            source_document_path = document_path
+            document_path = os.path.join(temp_dir, "document.FCStd")
+            fd = os.open(
+                document_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(fd)
+            shutil.copyfile(source_document_path, document_path)
+    except Exception as e:
+        if temp_ctx is not None:
+            temp_ctx.cleanup()
+        return PreflightResult(
+            PreflightStatus.ERROR,
+            f"Preflight error: could not create private workspace: {e}",
+            code,
+        )
 
     if document_path:
         open_block = (
@@ -331,6 +406,8 @@ finally:
     )
 
     try:
+        fd = os.open(script_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
         with open(script_file, "w") as f:
             f.write(harness)
 
@@ -344,39 +421,44 @@ finally:
         if proc.returncode != 0 and proc.returncode > 0:
             # Non-zero but not a signal — Python error
             stderr = proc.stderr.decode(errors="replace")[-500:]
-            return False, "Sandbox: code raised an error:\n" + stderr
+            return PreflightResult(
+                PreflightStatus.REJECTED,
+                "Sandbox: code raised an error:\n" + stderr, code)
 
         if proc.returncode < 0:
             # Killed by signal (e.g. SIGSEGV = -11)
             sig = -proc.returncode
             sig_name = signal.Signals(sig).name if sig in signal.Signals._value2member_map_ else str(sig)
-            return False, (
+            return PreflightResult(PreflightStatus.REJECTED, (
                 "Sandbox: code CRASHED FreeCAD (signal {}). "
                 "This code is not safe to execute.".format(sig_name)
-            )
+            ), code)
 
         # Read result
-        if os.path.exists(result_file):
+        if os.path.getsize(result_file) > 0:
             with open(result_file) as f:
                 result = json.load(f)
             if result["ok"]:
-                return True, ""
+                return PreflightResult(PreflightStatus.PASSED, "", code)
             else:
-                return False, "Sandbox: " + result["error"]
+                return PreflightResult(
+                    PreflightStatus.REJECTED,
+                    "Sandbox: " + result["error"], code)
 
-        return True, ""  # No result file but process exited OK
+        return PreflightResult(
+            PreflightStatus.ERROR,
+            "Preflight error: FreeCADCmd produced no result.", code)
 
     except subprocess.TimeoutExpired:
-        return False, "Sandbox: code timed out after {} seconds".format(timeout)
+        return PreflightResult(
+            PreflightStatus.REJECTED,
+            "Sandbox: code timed out after {} seconds".format(timeout), code)
     except Exception as e:
-        # Sandbox itself failed — don't block execution
-        return True, ""
+        return PreflightResult(
+            PreflightStatus.ERROR,
+            f"Preflight error: {e}", code)
     finally:
-        for f in (script_file, result_file):
-            try:
-                os.unlink(f)
-            except OSError:
-                pass
+        temp_ctx.cleanup()
 
 
 def _auto_save(namespace: dict):
@@ -436,7 +518,8 @@ def _configured_timeout(default: int = _DEFAULT_EXECUTION_TIMEOUT) -> int:
 
 
 def execute_code(code: str, timeout: int | None = None, sandbox: bool = True,
-                 skip_safety: bool = False) -> ExecutionResult:
+                 skip_safety: bool = False,
+                 allow_unvalidated: bool = False) -> ExecutionResult:
     """Execute Python code in FreeCAD's context.
 
     The code runs with FreeCAD modules available in its namespace.
@@ -471,45 +554,30 @@ def execute_code(code: str, timeout: int | None = None, sandbox: bool = True,
 
     from .active_document import get_synced_active_document, refresh_gui_for_document
 
-    # Layer 2: Subprocess sandbox (skipped in dangerous mode) — optional copy of saved document so getObject-style code validates safely
-    sandbox_copy_path = None
+    # Layer 2: Subprocess sandbox (skipped in dangerous mode). The sandbox
+    # copies a saved document into its private workspace before opening it.
     if sandbox and not skip_safety:
         pre_doc = get_synced_active_document()
         fn = getattr(pre_doc, "FileName", "") if pre_doc else ""
-        if fn and os.path.isfile(fn):
-            try:
-                fd, sandbox_copy_path = tempfile.mkstemp(suffix=".FCStd")
-                os.close(fd)
-                shutil.copy2(fn, sandbox_copy_path)
-            except OSError as e:
-                return ExecutionResult(
-                    success=False,
-                    stdout="",
-                    stderr=f"Sandbox: could not copy document for validation: {e}",
-                    code=code,
-                )
-        try:
-            # The dry-run must get the same budget as the live execution
-            # (which arms a SIGALRM for the full `timeout`). Capping it lower
-            # made valid-but-slow code — e.g. scaling a complex shape with
-            # Shape.transformGeometry — fail the pre-check with a spurious
-            # "timed out after 15 seconds" and never run (issue #14).
-            safe, sandbox_err = _sandbox_test(
-                code, timeout=timeout, document_path=sandbox_copy_path
+        source_document_path = fn if fn and os.path.isfile(fn) else None
+        # The dry-run must get the same budget as the live execution
+        # (which arms a SIGALRM for the full `timeout`). Capping it lower
+        # made valid-but-slow code — e.g. scaling a complex shape with
+        # Shape.transformGeometry — fail the pre-check with a spurious
+        # "timed out after 15 seconds" and never run (issue #14).
+        preflight = _coerce_preflight(_sandbox_test(
+            code, timeout=timeout, document_path=source_document_path
+        ), code)
+        may_override = preflight.status in (
+            PreflightStatus.UNAVAILABLE, PreflightStatus.ERROR)
+        if not preflight.passed and not (
+                allow_unvalidated and may_override):
+            return ExecutionResult(
+                success=False,
+                stdout="",
+                stderr=preflight.message,
+                code=code,
             )
-            if not safe:
-                return ExecutionResult(
-                    success=False,
-                    stdout="",
-                    stderr=sandbox_err,
-                    code=code,
-                )
-        finally:
-            if sandbox_copy_path:
-                try:
-                    os.unlink(sandbox_copy_path)
-                except OSError:
-                    pass
 
     target_doc = get_synced_active_document()
     if target_doc is None:
@@ -599,58 +667,34 @@ def execute_code(code: str, timeout: int | None = None, sandbox: bool = True,
     )
 
 
-def validate_code(code: str, timeout: int = 15, skip_safety: bool = False) -> ExecutionResult:
+def validate_code(code: str, timeout: int = 15,
+                  skip_safety: bool = False) -> PreflightResult:
     """Run static + sandbox validation without touching the live document.
 
     Runs Layer 1 (static pattern check) and Layer 2 (headless subprocess
-    against a temp copy of the active document). Skips Layer 3/4. Returns
-    an ExecutionResult so callers can reuse the same error-surfacing path
-    they use for actual execution.
-
-    If no FreeCAD console binary is available, the sandbox is skipped and
-    the result is a pass — matches execute_code()'s fallback behavior.
+    against a temp copy of the active document). Skips Layer 3/4 and returns
+    an explicit status so unavailable validation cannot be mistaken for a pass.
 
     skip_safety: When True, return success immediately without running any
         validation (Dangerous mode).
     """
     if skip_safety:
-        return ExecutionResult(success=True, stdout="", stderr="", code=code)
+        return PreflightResult(
+            PreflightStatus.PASSED, "Validation skipped by Dangerous mode.", code)
     warnings = _validate_code(code)
     if warnings:
-        return ExecutionResult(
-            success=False,
-            stdout="",
-            stderr="Static validation failed:\n" + "\n".join(warnings),
-            code=code,
+        return PreflightResult(
+            PreflightStatus.REJECTED,
+            "Static validation failed:\n" + "\n".join(warnings), code,
         )
 
     from .active_document import get_synced_active_document
     pre_doc = get_synced_active_document()
     fn = getattr(pre_doc, "FileName", "") if pre_doc else ""
-    sandbox_copy_path = None
-    if fn and os.path.isfile(fn):
-        try:
-            fd, sandbox_copy_path = tempfile.mkstemp(suffix=".FCStd")
-            os.close(fd)
-            shutil.copy2(fn, sandbox_copy_path)
-        except OSError as e:
-            return ExecutionResult(
-                success=False,
-                stdout="",
-                stderr=f"Sandbox: could not copy document for validation: {e}",
-                code=code,
-            )
-    try:
-        safe, err = _sandbox_test(code, timeout=timeout, document_path=sandbox_copy_path)
-    finally:
-        if sandbox_copy_path:
-            try:
-                os.unlink(sandbox_copy_path)
-            except OSError:
-                pass
-    if safe:
-        return ExecutionResult(success=True, stdout="", stderr="", code=code)
-    return ExecutionResult(success=False, stdout="", stderr=err, code=code)
+    source_document_path = fn if fn and os.path.isfile(fn) else None
+    return _coerce_preflight(
+        _sandbox_test(code, timeout=timeout,
+                      document_path=source_document_path), code)
 
 
 def _validate_code(code: str) -> list[str]:

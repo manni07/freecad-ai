@@ -17,7 +17,8 @@ MCP configuration (Streamable HTTP — preferred):
 {
     "freecad": {
       "type": "http",
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {"Authorization": "Bearer <token from token file>"}
     }
 }
 
@@ -32,12 +33,14 @@ Environment variables:
                         (default: loopback only). Needed when binding a
                         non-loopback address: clients send the address they
                         dialled, so it must be named here. "*" is refused —
-                        the server has no authentication.
+                        only explicit private-network hosts are supported.
+    MCP_TOKEN_FILE — optional custom token file. It must already exist and
+                     have private owner-only permissions.
 """
 
+import logging
 import os
 import sys
-import logging
 
 logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
@@ -55,25 +58,27 @@ import FreeCAD
 if not FreeCAD.ActiveDocument:
     FreeCAD.newDocument("Unnamed")
 
+# Config is a fallback for environment overrides and carries the authentication
+# policy. Failure to load it must prevent an accidentally underconfigured
+# listener from starting.
+from freecad_ai.config import get_config
 from freecad_ai.mcp.gui_server import (
     get_server_controller,
     resolve_allowed_hosts,
     resolve_server_address,
 )
 
-# Config is only a fallback here; MCP_HOST / MCP_PORT still win. Reading it
-# can fail outside a configured install, which must not stop the server.
-try:
-    from freecad_ai.config import get_config
-    _cfg = get_config()
-except Exception:
-    _cfg = None
+_cfg = get_config()
 
 host, port = resolve_server_address(_cfg)
 allowed_hosts = resolve_allowed_hosts(_cfg)
 
 # start() binds before returning, so this line can no longer announce a
 # server that never came up.
-url = get_server_controller().start(host, port, allowed_hosts=allowed_hosts)
+controller = get_server_controller()
+url = controller.start(
+    host, port, allowed_hosts=allowed_hosts, cfg=_cfg)
 
-print(f"MCP server running on {url}", flush=True)
+print(
+    f"MCP server running on {url}; token file: {controller.token_file_path}",
+    flush=True)

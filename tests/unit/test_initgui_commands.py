@@ -13,6 +13,7 @@ reflect, and the tick never changes afterwards.
 """
 
 import pathlib
+import runpy
 import sys
 import types
 
@@ -175,3 +176,48 @@ def test_toggle_reports_a_rejected_allowed_hosts_list(initgui, ticks,
     assert isinstance(reported[0], ValueError)
     assert "*" in str(reported[0])
     assert ticks["FreeCADAI_ToggleMCPServer"] is False
+
+
+def test_toggle_failure_presentation_never_echoes_token_content(
+        initgui, monkeypatch):
+    from freecad_ai.ui import compat
+
+    token = "sensitive-installation-token-" + "X" * 32
+    console = []
+    dialogs = []
+    initgui["App"].Console.PrintError = console.append
+    monkeypatch.setattr(
+        compat, "QtWidgets",
+        types.SimpleNamespace(QMessageBox=types.SimpleNamespace(
+            warning=lambda parent, title, message: dialogs.append(message))))
+
+    initgui["ToggleMCPServerCommand"]()._report_failure(
+        "127.0.0.1", 3131, OSError("failed credential " + token))
+
+    assert console and dialogs
+    assert token not in "".join(console)
+    assert token not in "".join(dialogs)
+
+
+def test_http_entrypoint_config_failure_is_fail_closed_before_start(
+        initgui, monkeypatch):
+    import freecad_ai.config as config_mod
+    from freecad_ai.mcp import gui_server
+
+    started = []
+    initgui["App"].ActiveDocument = object()
+    initgui["App"].newDocument = lambda name: None
+    monkeypatch.setattr(
+        config_mod, "get_config",
+        lambda: (_ for _ in ()).throw(RuntimeError("corrupt config")))
+    monkeypatch.setattr(gui_server, "resolve_server_address", lambda cfg: ("127.0.0.1", 3131))
+    monkeypatch.setattr(gui_server, "resolve_allowed_hosts", lambda cfg: None)
+    monkeypatch.setattr(
+        gui_server, "get_server_controller",
+        lambda: types.SimpleNamespace(
+            start=lambda *args, **kwargs: started.append((args, kwargs)) or "unused"))
+    with pytest.raises(RuntimeError, match="corrupt config"):
+        runpy.run_path(
+            str(PROJECT_ROOT / "mcp_server_http.py"), run_name="__main__")
+
+    assert started == []

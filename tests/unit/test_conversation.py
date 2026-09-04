@@ -317,6 +317,48 @@ class TestPersistence:
         assert loaded.model == "test-model"
         assert len(loaded.messages) == 2
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX mode contract")
+    def test_saved_conversation_is_complete_and_private(
+            self, tmp_config_dir, monkeypatch):
+        import stat
+
+        import freecad_ai.core.conversation as conv_mod
+        conv_dir = os.path.join(str(tmp_config_dir), "conversations")
+        monkeypatch.setattr(conv_mod, "CONVERSATIONS_DIR", conv_dir)
+        conversation = Conversation(conversation_id="private-complete")
+        conversation.add_user_message("user secret context")
+        conversation.add_assistant_message(
+            "assistant answer",
+            tool_calls=[{"id": "1", "name": "measure", "arguments": {"x": 1}}],
+        )
+        conversation.add_tool_result("1", "complete result")
+
+        conversation.save()
+        loaded = Conversation.load("private-complete")
+        path = os.path.join(conv_dir, "private-complete.json")
+
+        assert loaded.messages == conversation.messages
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+    def test_atomic_save_failure_preserves_previous_conversation(
+            self, tmp_config_dir, monkeypatch):
+        import freecad_ai.core.conversation as conv_mod
+        conv_dir = os.path.join(str(tmp_config_dir), "conversations")
+        monkeypatch.setattr(conv_mod, "CONVERSATIONS_DIR", conv_dir)
+        path = os.path.join(conv_dir, "stable.json")
+        with open(path, "wb") as stream:
+            stream.write(b"previous complete conversation")
+
+        def fail_atomic(*args, **kwargs):
+            raise OSError("injected conversation atomic failure")
+
+        monkeypatch.setattr(conv_mod, "atomic_write_json", fail_atomic, raising=False)
+        with pytest.raises(OSError, match="conversation atomic"):
+            Conversation(conversation_id="stable").save()
+        with open(path, "rb") as stream:
+            assert stream.read() == b"previous complete conversation"
+        assert sorted(os.listdir(conv_dir)) == ["stable.json"]
+
     def test_list_saved(self, tmp_config_dir, monkeypatch):
         import freecad_ai.core.conversation as conv_mod
         conv_dir = os.path.join(str(tmp_config_dir), "conversations")

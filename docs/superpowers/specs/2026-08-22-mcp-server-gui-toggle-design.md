@@ -1,5 +1,11 @@
 # MCP Server GUI Toggle (#55 follow-up) — Design
 
+> Historical design record. Security remediation dated 2026-09-04 supersedes
+> its unauthenticated/free-bind assumptions: HTTP now requires per-request
+> Bearer authentication, private single-address binding and bounded rate/
+> concurrency, and it never exposes `execute_code`. See
+> `docs/audits/security-remediation-2026-09-04.html`.
+
 **Issue:** follow-up to [#55 — use this addon with claude cli / other MCP clients](https://github.com/ghbalf/freecad-ai/issues/55) (closed); suggested by @s-light in the closing comment
 **Date:** 2026-08-22
 **Status:** Approved (design)

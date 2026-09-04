@@ -5,8 +5,11 @@ StdioServerTransport — reads stdin / writes stdout (server side).
 HTTPServerTransport — serves MCP over HTTP: Streamable HTTP and HTTP+SSE.
 """
 
+import hmac
 import json
 import logging
+import math
+import socket
 import subprocess
 import sys
 import threading
@@ -14,9 +17,10 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from collections.abc import Callable
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
-from typing import Any, Callable
+from typing import Any
 
 from . import protocol
 
@@ -529,6 +533,9 @@ _WILDCARD_BIND_HOSTS = frozenset({"0.0.0.0", "::"})
 # rfile.read() block to EOF and pin a worker thread until the socket timeout,
 # answering nothing; an oversized one would buffer the whole body in memory.
 MAX_REQUEST_BODY = 10 * 1024 * 1024
+DEFAULT_RATE_LIMIT_PER_MINUTE = 60
+DEFAULT_RATE_LIMIT_BURST = 20
+DEFAULT_MAX_CONCURRENT_REQUESTS = 8
 
 
 class HTTPServerTransport:
@@ -549,25 +556,45 @@ class HTTPServerTransport:
     Designed for a single connected client at a time (typical for a
     desktop-app MCP server like FreeCAD).
 
-    Because ``POST /messages`` executes arbitrary tools (including run_macro),
-    every request is gated: the ``Host`` header must be loopback (a
-    DNS-rebinding guard) and any cross-origin ``Origin`` is rejected. Native
-    MCP clients send no ``Origin``; a malicious web page's ``fetch()`` always
-    does, so this blocks browser drive-by tool invocation without breaking the
-    documented local client. ``allowed_hosts``/``allowed_origins`` widen the
-    policy for advanced (e.g. deliberately LAN-exposed) deployments.
+    Because ``POST /messages`` executes tools (including run_macro), every
+    request is gated by Host/Origin checks, one Bearer token, a global rate
+    bucket and bounded pre-thread admission. ``allowed_hosts`` and
+    ``allowed_origins`` widen only the corresponding header policies.
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 3000,
-                 allowed_hosts=None, allowed_origins=()):
+                 allowed_hosts=None, allowed_origins=(), *, bearer_token,
+                 address_family=socket.AF_INET,
+                 rate_limit_per_minute=DEFAULT_RATE_LIMIT_PER_MINUTE,
+                 rate_limit_burst=DEFAULT_RATE_LIMIT_BURST,
+                 max_concurrent_requests=DEFAULT_MAX_CONCURRENT_REQUESTS):
+        if not isinstance(bearer_token, str) or not bearer_token:
+            raise ValueError("a non-empty MCP bearer token is required")
+        if address_family not in (socket.AF_INET, socket.AF_INET6):
+            raise ValueError("unsupported MCP listener address family")
         self._host = host
         self._port = port
+        self._family = address_family
         self._handler: Callable[[dict], dict | None] | None = None
         self._sse_wfile: Any = None
         self._sse_lock = threading.Lock()
         self._httpd = None
         self._serving = False
         self._lifecycle_lock = threading.Lock()
+        self._bearer_lock = threading.Lock()
+        self._bearer_token = bearer_token
+        self._rate_limit_per_minute = self._safe_limit(
+            rate_limit_per_minute, DEFAULT_RATE_LIMIT_PER_MINUTE,
+            "rate_limit_per_minute")
+        self._rate_limit_burst = self._safe_limit(
+            rate_limit_burst, DEFAULT_RATE_LIMIT_BURST, "rate_limit_burst")
+        maximum = self._safe_limit(
+            max_concurrent_requests, DEFAULT_MAX_CONCURRENT_REQUESTS,
+            "max_concurrent_requests")
+        self._admission = threading.BoundedSemaphore(maximum)
+        self._rate_lock = threading.Lock()
+        self._rate_tokens = float(self._rate_limit_burst)
+        self._rate_checked_at = time.monotonic()
         if allowed_hosts is None:
             if host.lower() in _WILDCARD_BIND_HOSTS:
                 raise OSError(
@@ -580,6 +607,49 @@ class HTTPServerTransport:
             allowed_hosts = _LOOPBACK_HOSTS | {host.lower()}
         self._allowed_hosts = frozenset(h.lower() for h in allowed_hosts)
         self._allowed_origins = frozenset(allowed_origins)
+
+    @staticmethod
+    def _safe_limit(value, default, name):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            logger.warning("Invalid MCP %s; using safe default %d", name, default)
+            return default
+        return value
+
+    def rotate_bearer_token(self, token: str) -> None:
+        """Atomically replace the token used by future request checks."""
+        if not isinstance(token, str) or not token:
+            raise ValueError("a non-empty MCP bearer token is required")
+        with self._bearer_lock:
+            self._bearer_token = token
+
+    def _bearer_matches(self, headers) -> bool:
+        values = headers.get_all("Authorization", [])
+        if len(values) != 1:
+            return False
+        parts = values[0].split(None, 1)
+        if len(parts) != 2 or parts[0].casefold() != "bearer":
+            return False
+        candidate = parts[1]
+        if not candidate or any(char.isspace() for char in candidate):
+            return False
+        with self._bearer_lock:
+            expected = self._bearer_token
+        return hmac.compare_digest(candidate, expected)
+
+    def _consume_rate_token(self):
+        with self._rate_lock:
+            now = time.monotonic()
+            elapsed = max(0.0, now - self._rate_checked_at)
+            refill_per_second = self._rate_limit_per_minute / 60.0
+            self._rate_tokens = min(
+                float(self._rate_limit_burst),
+                self._rate_tokens + elapsed * refill_per_second)
+            self._rate_checked_at = now
+            if self._rate_tokens >= 1.0:
+                self._rate_tokens -= 1.0
+                return True, 0
+            missing = 1.0 - self._rate_tokens
+            return False, max(1, math.ceil(missing / refill_per_second))
 
     @staticmethod
     def _hostname_of(host_header) -> str:
@@ -700,17 +770,35 @@ class HTTPServerTransport:
             def _base_path(self):
                 return self.path.split("?")[0].rstrip("/")
 
-            def _authorized(self):
-                if transport._request_allowed(
-                    self.headers.get("Host"), self.headers.get("Origin")
-                ):
-                    return True
-                self.send_error(403)
-                return False
+            def parse_request(self):
+                if not super().parse_request():
+                    return False
+                hosts = self.headers.get_all("Host", [])
+                origins = self.headers.get_all("Origin", [])
+                if (len(hosts) != 1 or len(origins) > 1
+                        or not transport._request_allowed(
+                            hosts[0], origins[0] if origins else None)):
+                    self.send_error(403)
+                    return False
+                if not transport._bearer_matches(self.headers):
+                    self.send_response(401)
+                    self.send_header(
+                        "WWW-Authenticate", 'Bearer realm="FreeCAD AI MCP"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return False
+                allowed, retry_after = transport._consume_rate_token()
+                if not allowed:
+                    self.send_response(429)
+                    self.send_header("Retry-After", str(retry_after))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return False
+                return True
 
             def do_GET(self):
-                if not self._authorized():
-                    return
                 path = self._base_path()
                 if path == "/sse":
                     self._handle_sse()
@@ -723,11 +811,6 @@ class HTTPServerTransport:
                     self.send_error(404)
 
             def do_DELETE(self):
-                # _authorized() is invoked per-verb by hand — BaseHTTPRequest-
-                # Handler has no dispatch layer to hook — so a new verb that
-                # forgets this call silently bypasses the Host/Origin guard.
-                if not self._authorized():
-                    return
                 if self._base_path() == "/mcp":
                     # DELETE terminates a session. We issue none.
                     self._send_method_not_allowed()
@@ -741,8 +824,6 @@ class HTTPServerTransport:
                 self.end_headers()
 
             def do_POST(self):
-                if not self._authorized():
-                    return
                 path = self._base_path()
                 if path == "/messages":
                     self._handle_messages()
@@ -909,8 +990,6 @@ class HTTPServerTransport:
                 self.wfile.write(data)
 
             def do_OPTIONS(self):
-                if not self._authorized():
-                    return
                 # No permissive CORS: a cross-origin preflight gets no
                 # Access-Control-Allow-Origin, so the browser blocks the
                 # follow-up request (do_POST also rejects it server-side).
@@ -919,6 +998,32 @@ class HTTPServerTransport:
 
         class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
             daemon_threads = True
+            address_family = transport._family
+
+            def process_request(self, request, client_address):
+                if not transport._admission.acquire(blocking=False):
+                    try:
+                        request.sendall(
+                            b"HTTP/1.0 503 Service Unavailable\r\n"
+                            b"Retry-After: 1\r\n"
+                            b"Content-Length: 0\r\n"
+                            b"Connection: close\r\n\r\n")
+                    except OSError:
+                        pass
+                    finally:
+                        self.shutdown_request(request)
+                    return
+                try:
+                    super().process_request(request, client_address)
+                except BaseException:
+                    transport._admission.release()
+                    raise
+
+            def process_request_thread(self, request, client_address):
+                try:
+                    super().process_request_thread(request, client_address)
+                finally:
+                    transport._admission.release()
 
         return ThreadedHTTPServer((self._host, self._port), RequestHandler)
 

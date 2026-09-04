@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sicherheitsaudit – FreeCAD AI – 2026-09-04</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #5f6b7a;
+      --line: #d9e0ea;
+      --critical: #8b1020;
+      --high: #bd3d16;
+      --medium: #9a6700;
+      --low: #276749;
+      --info: #2456a6;
+      --code: #eef2f7;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --panel: #182233;
+        --text: #ecf1f8;
+        --muted: #b5c0cf;
+        --line: #344258;
+        --critical: #ff8090;
+        --high: #ff9c72;
+        --medium: #ffd166;
+        --low: #83d7aa;
+        --info: #8db7ff;
+        --code: #0d1522;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 38px 22px 72px; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.2rem); }
+    h2 { margin-top: 38px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+    h3 { margin-top: 28px; }
+    a { color: var(--info); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { background: var(--code); padding: .12em .34em; border-radius: 4px; }
+    pre { background: var(--code); padding: 14px; border-radius: 8px; overflow: auto; white-space: pre-wrap; }
+    .meta, .card, .finding, .verdict {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 18px 0;
+    }
+    .meta { color: var(--muted); }
+    .meta dl { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; margin: 0; }
+    .meta dt { font-weight: 650; color: var(--text); }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .verdict { border-left: 6px solid var(--critical); }
+    .finding { border-left: 6px solid var(--line); }
+    .finding.critical { border-left-color: var(--critical); }
+    .finding.high { border-left-color: var(--high); }
+    .finding.medium { border-left-color: var(--medium); }
+    .finding.low { border-left-color: var(--low); }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 750; font-size: .83rem; border: 1px solid currentColor; }
+    .critical-text { color: var(--critical); }
+    .high-text { color: var(--high); }
+    .medium-text { color: var(--medium); }
+    .low-text { color: var(--low); }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 12px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+    .stat strong { display: block; font-size: 1.7rem; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--panel); }
+    th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; vertical-align: top; }
+    th { background: var(--code); }
+    ul, ol { padding-left: 1.4rem; }
+    .callout { padding: 14px 16px; border-left: 4px solid var(--info); background: var(--panel); }
+    .nowrap { white-space: nowrap; }
+    footer { margin-top: 46px; color: var(--muted); font-size: .92rem; }
+    @media print {
+      :root { color-scheme: light; }
+      body { background: white; }
+      main { max-width: none; padding: 18mm; }
+      .finding, .card, .meta, .verdict { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="muted">Statisches Source-Code-Sicherheitsaudit</p>
+    <h1>FreeCAD AI</h1>
+    <p>Auditbericht vom 4. September 2026</p>
+  </header>
+
+  <section class="meta" aria-label="Auditmetadaten">
+    <dl>
+      <dt>Projekt</dt><dd><code>/Volumes/ExtremePro/projects/freecad-ai</code></dd>
+      <dt>Branch</dt><dd><code>master</code></dd>
+      <dt>Commit</dt><dd><code>15774022a1c981335135d95928bd6cb4f7ba0431</code></dd>
+      <dt>Release-Metadaten</dt><dd><code>0.23.1-alpha</code> in <code>package.xml</code>; <code>0.1.0</code> in <code>pyproject.toml</code></dd>
+      <dt>Prüfart</dt><dd>Quellcodeanalyse, manuelle Datenflussanalyse, sichere Negativproben und lokale Scanner</dd>
+      <dt>Nicht umfasst</dt><dd>Produktions-Penetrationstest, vollständiger FreeCAD-/PySide-Laufzeittest, Cloud-Provider-Test, tatsächliche Netzexposition</dd>
+    </dl>
+  </section>
+
+  <section class="verdict">
+    <h2 style="margin-top:0">Gesamturteil: hoch bis kritisch</h2>
+    <p>Der nominelle „Safe Mode“ ist keine Sicherheitsgrenze. Das Modell kann über das regulär angebotene Werkzeug <code>execute_code</code> Python-Code mit den Rechten des FreeCAD-Prozesses ausführen; die statische Sperrliste lässt einfache Varianten für Datei-, Prozess- und Netzwerkzugriffe passieren. Zusätzlich können Projektdateien über unbeschränkte <code>AGENTS.md</code>-Includes lokale Dateien in Modellanfragen einschleusen.</p>
+    <p><strong>Stop-Regel:</strong> Den HTTP-MCP-Endpunkt nicht in LAN oder Internet veröffentlichen und Safe Mode nicht als Schutz gegen bösartige oder kompromittierte Modellantworten behandeln, bis mindestens SEC-01, SEC-03 und SEC-04 behoben und erneut geprüft sind.</p>
+  </section>
+
+  <section aria-labelledby="summary">
+    <h2 id="summary">Management Summary</h2>
+    <div class="grid">
+      <div class="stat critical-text"><strong>1</strong>Kritisch</div>
+      <div class="stat high-text"><strong>3</strong>Hoch</div>
+      <div class="stat medium-text"><strong>2</strong>Mittel</div>
+      <div class="stat low-text"><strong>1</strong>Niedrig</div>
+    </div>
+    <p>Die gefährlichste Kette ist: nicht vertrauenswürdiger Projektinhalt oder manipulierte Modellantwort → automatischer Tool-Aufruf → unzureichend gefilterter Python-Code → Zugriff auf Dateien, Netzwerk, Umgebungsvariablen und lokale Prozesse. Der TLS-Fail-open erhöht die Wahrscheinlichkeit einer solchen Kette, weil ein lokaler Fehler beim Aufbau des Zertifikatsspeichers die Zertifikatsprüfung vollständig abschaltet.</p>
+    <p>Positiv sind die standardmäßige Loopback-Bindung, Host-/Origin-Prüfungen, ein 10-MiB-Request-Limit, Socket-Timeouts, Undo-Transaktionen, Backup-Unterstützung und HTML-Escaping in der Chatdarstellung. Diese Kontrollen reduzieren einzelne Risiken, beseitigen die Kernbefunde aber nicht.</p>
+  </section>
+
+  <section aria-labelledby="scope">
+    <h2 id="scope">Scope und Methode</h2>
+    <p>Untersucht wurden insbesondere die Angriffsflächen LLM-Tool-Ausführung, MCP-Transport und -Dispatch, Konfiguration und Geheimnisse, Projektanweisungen, temporäre Dateien, Logging, Erweiterungsmechanismen, Makropfade und HTML-Ausgabe. Analysiert wurden Quelltext und Tests am oben genannten Commit. Es wurden keine Dienste gestartet, keine Rechner oder Server neu gestartet und keine produktiven Zugangsdaten gelesen.</p>
+    <p>Bewertungen kombinieren Ausnutzbarkeit, Auswirkung und Voreinstellung. „Bedingt“ bedeutet, dass ein Befund erst bei einer ausdrücklich aktivierten Betriebsform – etwa LAN-Bindung – extern erreichbar wird; die Codeeigenschaft selbst ist dennoch vorhanden.</p>
+
+    <h3>Relevante Vertrauensgrenzen</h3>
+    <table>
+      <thead><tr><th>Quelle</th><th>Grenze</th><th>Schutzbedarf</th></tr></thead>
+      <tbody>
+        <tr><td>LLM-Antwort / Tool Call</td><td>Modell → FreeCAD-Prozess</td><td>Explizite Freigabe, enge Werkzeuge, echte Isolation</td></tr>
+        <tr><td>FreeCAD-Projekt und <code>AGENTS.md</code></td><td>Projektdatei → System-Prompt → externer Provider</td><td>Projektvertrauen, Pfadbegrenzung, Vorschau</td></tr>
+        <tr><td>MCP-HTTP-Client</td><td>Netzwerk → lokale Werkzeuge / Dokumentzustand</td><td>Authentisierung, Autorisierung, Rate Limits</td></tr>
+        <tr><td>LLM-Provider</td><td>Lokaler Prozess → HTTPS-Provider</td><td>Strikte Zertifikatsprüfung, Geheimnisschutz</td></tr>
+        <tr><td>Lokales Dateisystem</td><td>Mehrere lokale Benutzer/Prozesse → Konfiguration, Logs, Temp</td><td>0600/0700, sichere temporäre Dateien, Redaction</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="overview">
+    <h2 id="overview">Befundübersicht</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Schwere</th><th>Kurzbeschreibung</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td><a href="#sec-01">SEC-01</a></td><td class="critical-text"><strong>Kritisch</strong></td><td>Safe Mode erlaubt beliebige Python-Nebenwirkungen</td><td>Bestätigt</td></tr>
+        <tr><td><a href="#sec-02">SEC-02</a></td><td class="high-text"><strong>Hoch</strong></td><td><code>AGENTS.md</code>-Includes können beliebige lokale Dateien lesen</td><td>Bestätigt</td></tr>
+        <tr><td><a href="#sec-03">SEC-03</a></td><td class="high-text"><strong>Hoch</strong></td><td>HTTP-MCP ohne Authentisierung bietet schreibende Werkzeuge an</td><td>Bestätigt, remote bedingt</td></tr>
+        <tr><td><a href="#sec-04">SEC-04</a></td><td class="high-text"><strong>Hoch</strong></td><td>TLS-Zertifikatsprüfung fällt auf ungesicherten Modus zurück</td><td>Bestätigt</td></tr>
+        <tr><td><a href="#sec-05">SEC-05</a></td><td class="medium-text"><strong>Mittel</strong></td><td>Unsichere temporäre Dateinamen für ausführbaren Python-Code</td><td>Bestätigt</td></tr>
+        <tr><td><a href="#sec-06">SEC-06</a></td><td class="medium-text"><strong>Mittel</strong></td><td>Schlüssel und Gesprächsdaten unverschlüsselt; Rechte nicht erzwungen</td><td>Bestätigt im Code</td></tr>
+        <tr><td><a href="#sec-07">SEC-07</a></td><td class="low-text"><strong>Niedrig</strong></td><td>Abhängigkeits- und SBOM-Blindstelle</td><td>Assurance Gap</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="details">
+    <h2 id="details">Detaillierte Befunde</h2>
+
+    <article class="finding critical" id="sec-01">
+      <h3><span class="badge critical-text">SEC-01 · Kritisch</span> Safe Mode erlaubt beliebige Python-Nebenwirkungen</h3>
+      <p><strong>Beschreibung.</strong> <code>execute_code</code> wird dem Modell als normales Werkzeug angeboten. Im Act-Modus werden Tool Calls automatisch ausgeführt, sofern kein optionaler Hook sie blockiert. Die Safe-Mode-Prüfung ist eine kleine Regex-/Substring-Sperrliste; danach wird der Code erst in einem FreeCAD-Unterprozess und anschließend erneut im Live-Prozess per <code>exec</code> ausgeführt. Der Unterprozess erbt Benutzerrechte und Umgebung. Ist kein FreeCAD-Binary vorhanden oder tritt intern ein Prüffehler auf, kann die Vorprüfung erfolgreich beziehungsweise fail-open enden.</p>
+      <p><strong>Quellbelege.</strong></p>
+      <ul>
+        <li><code>freecad_ai/ui/chat_widget.py:391–412</code> – automatische Verarbeitung von Modell-Tool-Calls.</li>
+        <li><code>freecad_ai/tools/freecad_tools.py:3542–3569</code> – Registrierung und Handler von <code>execute_code</code>.</li>
+        <li><code>freecad_ai/core/executor.py:656–672</code> – unvollständige textuelle Sperrliste.</li>
+        <li><code>freecad_ai/core/executor.py:179–190, 284–285, 333–342, 371–373</code> – Vorlauf, Codeausführung, geerbte Prozessumgebung und Fail-open-Pfade.</li>
+        <li><code>freecad_ai/core/executor.py:438–560</code> – anschließende Live-Ausführung via <code>exec(code, namespace)</code>.</li>
+      </ul>
+      <p><strong>Sichere Negativprobe.</strong> Die reine Validierungsfunktion lieferte für alle folgenden, nicht ausgeführten Strings eine leere Befundliste: <code>os.remove(...)</code>, <code>os.popen('id')</code>, dynamisch zusammengesetztes <code>__import__('sub'+'process')</code>, <code>urllib.request.urlopen(...)</code> und <code>open('/etc/passwd').read()</code>. Es wurden dabei weder Befehle gestartet noch Dateien verändert.</p>
+      <p><strong>Auswirkung.</strong> Prompt Injection, kompromittierte Providerantworten oder Modellfehler können Dateien lesen/ändern/löschen, Geheimnisse exfiltrieren, Prozesse starten und Netzwerkzugriffe durchführen. Der sogenannte Sandbox-Lauf ist keine OS-Isolation und kann Nebenwirkungen sogar zweimal auslösen.</p>
+      <p><strong>Empfehlung.</strong> <code>execute_code</code> standardmäßig vollständig aus dem für das Modell sichtbaren Schema entfernen. Jede Freischaltung und jeder Aufruf benötigt eine informierte menschliche Einzelbestätigung. Bevorzugt strukturierte, eng begrenzte FreeCAD-Operationen verwenden. Falls freie Codeausführung zwingend bleibt: separater Prozess mit minimalem Dateisystem, ohne Netzwerk und ohne Secrets, Ressourcenlimits, explizite Capability-Allowlist und strikt fail-closed, wenn die Isolation nicht verfügbar ist. Eine AST-Allowlist kann ergänzen, ersetzt aber keine Betriebssystem-Isolation.</p>
+      <p><strong>Referenz.</strong> CWE-94 (Improper Control of Generation of Code) und CWE-693 (Protection Mechanism Failure).</p>
+    </article>
+
+    <article class="finding high" id="sec-02">
+      <h3><span class="badge high-text">SEC-02 · Hoch</span> <code>AGENTS.md</code>-Includes können beliebige lokale Dateien lesen</h3>
+      <p><strong>Beschreibung.</strong> Beim Laden projektbezogener Anweisungen werden Include-Pfade mit dem Basisverzeichnis verbunden und direkt gelesen. Absolute Pfade, <code>..</code>-Traversal, Symlink-Ausbruch und die Zugehörigkeit zu einem vertrauenswürdigen Projektwurzelverzeichnis werden nicht geprüft. Der resultierende Inhalt wird automatisch in den System-Prompt aufgenommen und an den konfigurierten LLM-Provider übertragen.</p>
+      <p><strong>Quellbelege.</strong> <code>freecad_ai/extensions/agents_md.py:18–22, 34–66, 120–139</code>; <code>freecad_ai/core/system_prompt.py:430–435</code>; Request-Aufbau beispielhaft in <code>freecad_ai/llm/client.py:382–399</code>.</p>
+      <p><strong>Sichere Reproduktion.</strong> Ein isolierter Funktionsaufruf mit <code>&lt;!-- include: /etc/hosts --&gt;</code> und einem fiktiven Projektpfad gab den Inhalt von <code>/etc/hosts</code> zurück. Andere lokale Dateien oder Zugangsdaten wurden nicht gelesen.</p>
+      <p><strong>Auswirkung.</strong> Ein fremdes oder heruntergeladenes FreeCAD-Projekt kann lesbare lokale Dateien in die nächste Cloud-Modellanfrage einschleusen. Der übrige <code>AGENTS.md</code>-Text bildet zusätzlich eine Prompt-Injection-Fläche.</p>
+      <p><strong>Empfehlung.</strong> Absolute Pfade und Traversal verwerfen; Zielpfade per <code>realpath</code>/<code>commonpath</code> strikt an eine ausdrücklich vertrauenswürdige Projektwurzel binden; Symlink-Ziele erneut prüfen; Dateityp und Größe begrenzen. Projektanweisungen vor dem ersten Versand anzeigen und eine dauerhafte Vertrauensentscheidung pro Projekt verlangen. Inhalte im Prompt als nicht vertrauenswürdige Daten kapseln.</p>
+      <p><strong>Referenz.</strong> CWE-22 (Path Traversal), CWE-200 (Exposure of Sensitive Information).</p>
+    </article>
+
+    <article class="finding high" id="sec-03">
+      <h3><span class="badge high-text">SEC-03 · Hoch</span> HTTP-MCP ohne Authentisierung bietet schreibende Werkzeuge an</h3>
+      <p><strong>Beschreibung.</strong> Der HTTP-Transport unterstützt bewusst Nicht-Loopback-Adressen, implementiert aber keine Client-Authentisierung. Host- und Origin-Prüfungen reduzieren DNS-Rebinding- und Browserangriffe, identifizieren jedoch keinen berechtigten Benutzer. Über <code>tools/call</code> sind alle registrierten Built-ins erreichbar, einschließlich <code>execute_code</code>. Der Threading-Server besitzt außerdem keine erkennbare Anfrage- oder Parallelitätsbegrenzung.</p>
+      <p><strong>Quellbelege.</strong> <code>freecad_ai/config.py:416–428</code>; <code>freecad_ai/mcp/gui_server.py:52–86</code>; <code>freecad_ai/mcp/transport.py:522–600, 791–803, 857–873, 920–923</code>; <code>freecad_ai/mcp/server.py:36–79</code>; <code>freecad_ai/tools/setup.py:13–43</code>.</p>
+      <p><strong>Einordnung.</strong> Die Voreinstellung bindet nur an Loopback, Wildcard <code>*</code> wird verweigert, Origin und Host werden geprüft, Requests sind auf 10 MiB begrenzt und Sockets haben Timeouts. Daher wurde keine standardmäßige Remote-Exposition behauptet. Sobald ein Betreiber jedoch eine LAN-Adresse erlaubt, kann jeder erreichbare Client die Werkzeuge aufrufen.</p>
+      <p><strong>Auswirkung.</strong> Bei LAN-/Remote-Bindung können nicht authentisierte Clients FreeCAD-Zustand lesen und verändern sowie – über SEC-01 – Code im Benutzerkontext ausführen. Unbegrenzte Worker erleichtern Ressourcenerschöpfung.</p>
+      <p><strong>Empfehlung.</strong> Nicht-Loopback-Bindung ohne aktive Authentisierung hart ablehnen. Für rein lokale Nutzung mindestens ein installationsspezifisches, hochentropisches Bearer-Secret mit Prüfung bei jeder Anfrage verwenden; für Remote-Betrieb die aktuelle MCP-Autorisierung auf OAuth-2.1-Basis und Protected Resource Metadata umsetzen. Zusätzlich Parallelität, Rate und Request-Laufzeit begrenzen. Legacy-SSE-Sitzungen an den authentisierten Principal binden.</p>
+      <p><strong>Normative Referenz.</strong> Die aktuelle <a href="https://modelcontextprotocol.io/specification/draft/basic/transports/streamable-http">MCP-Spezifikation für Streamable HTTP</a> fordert Origin-Validierung und empfiehlt lokale Bindung sowie korrekte Authentisierung; die <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">MCP-Autorisierungsspezifikation</a> beschreibt den standardisierten HTTP-Autorisierungsfluss.</p>
+    </article>
+
+    <article class="finding high" id="sec-04">
+      <h3><span class="badge high-text">SEC-04 · Hoch</span> TLS-Zertifikatsprüfung fällt auf ungesicherten Modus zurück</h3>
+      <p><strong>Beschreibung.</strong> Scheitert <code>ssl.create_default_context()</code>, verwendet der Client <code>ssl._create_unverified_context()</code>. Derselbe Kontext wird für normale und gestreamte HTTPS-Anfragen genutzt, die API-Schlüssel, System-Prompt, Gesprächsinhalte und Tool-Daten enthalten.</p>
+      <p><strong>Quellbelege.</strong> <code>freecad_ai/llm/client.py:155–166, 372–380, 616–617, 786–797, 816–827</code>.</p>
+      <p><strong>Auswirkung.</strong> In genau der bereits fehlerhaften TLS-Umgebung kann ein Man-in-the-Middle Provider-Zugangsdaten und vertrauliche Inhalte lesen sowie Modellantworten manipulieren. Manipulierte Tool Calls können SEC-01 ausnutzen.</p>
+      <p><strong>Empfehlung.</strong> Bei fehlendem vertrauenswürdigem Zertifikatsspeicher mit einer klaren Fehlermeldung abbrechen. Einen benutzerdefinierten CA-Pfad nur explizit und mit Zertifikatsprüfung unterstützen; nie automatisch einen ungeprüften Kontext verwenden. Den Unterstrich-prefizierten privaten SSL-Helfer entfernen.</p>
+      <p><strong>Referenz.</strong> CWE-295 (Improper Certificate Validation).</p>
+    </article>
+
+    <article class="finding medium" id="sec-05">
+      <h3><span class="badge medium-text">SEC-05 · Mittel</span> Unsichere temporäre Dateinamen für ausführbaren Python-Code</h3>
+      <p><strong>Beschreibung.</strong> Der Executor erzeugt Pfade mit dem veralteten <code>tempfile.mktemp()</code>, öffnet sie erst später und lässt FreeCAD das Skript ausführen. Zwischen Namenswahl und Öffnen besteht ein lokales Race Window.</p>
+      <p><strong>Quellbelege.</strong> <code>freecad_ai/core/executor.py:189–190, 333–342, 358–361</code>. Bandit meldet hierzu B306 mit mittlerer Schwere und hoher Konfidenz.</p>
+      <p><strong>Auswirkung.</strong> Ein anderer lokaler Prozess kann bei gemeinsamem Temp-Verzeichnis den Pfad über Symlink oder Dateiaustausch übernehmen. Je nach Timing kann dies Dateien überschreiben oder abweichenden Code zur Ausführung bringen.</p>
+      <p><strong>Empfehlung.</strong> <code>mkstemp()</code> oder <code>NamedTemporaryFile</code> verwenden, den atomar erzeugten Deskriptor behalten, Modus 0600 setzen und Skript sowie Ergebnis in einem privaten <code>TemporaryDirectory</code> mit 0700 ablegen. Vor dem Lesen des Ergebnisses Eigentümer, Typ und Pfadbezug prüfen.</p>
+      <p><strong>Referenz.</strong> Die <a href="https://docs.python.org/3.12/library/tempfile.html#deprecated-functions-and-variables">Python-Dokumentation zu <code>tempfile.mktemp()</code></a> beschreibt die Race-Bedingung und empfiehlt <code>mkstemp()</code>.</p>
+    </article>
+
+    <article class="finding medium" id="sec-06">
+      <h3><span class="badge medium-text">SEC-06 · Mittel</span> Schlüssel und Gesprächsdaten unverschlüsselt; Rechte nicht erzwungen</h3>
+      <p><strong>Beschreibung.</strong> Das Konfigurationsverzeichnis enthält laut Modulbeschreibung Einstellungen, Secrets und Gesprächslogs. Verzeichnisse und Dateien werden ohne explizite restriktive Modi erzeugt; der festgestellte Prozess-<code>umask</code> war <code>022</code>. Ein literal eingetragener API-Schlüssel wird zusätzlich in FreeCADs Parameter-Store gespiegelt. Sitzungs- und Auto-Logs können vollständige Nachrichten, Tool-Argumente und Tool-Ergebnisse enthalten.</p>
+      <p><strong>Quellbelege.</strong> <code>freecad_ai/config.py:1–13, 301–308, 541–544, 581–586, 652–675</code>; <code>freecad_ai/core/conversation.py:417–430</code>; <code>freecad_ai/ui/chat_widget.py:2055–2086, 2106–2137</code>.</p>
+      <p><strong>Einordnung.</strong> Es wurden absichtlich keine realen Benutzer-Konfigurationsdateien oder Schlüssel gelesen. Die tatsächliche Lesbarkeit hängt von Rechten des übergeordneten FreeCAD-Konfigurationsverzeichnisses und lokalen ACLs ab. Der Code erzwingt die benötigte Vertraulichkeit jedoch nicht selbst.</p>
+      <p><strong>Auswirkung.</strong> Andere lokale Benutzer oder Prozesse können – abhängig von der Umgebung – Provider-Schlüssel, vertrauliche Prompts, Dateiinhalte und Tool-Ergebnisse erhalten. Mehrfache Speicherung vergrößert die Angriffs- und Backup-Fläche.</p>
+      <p><strong>Empfehlung.</strong> API-Schlüssel im macOS-Schlüsselbund beziehungsweise systemeigenen Secret Store verwalten; bevorzugt bestehende <code>file:</code>-Referenzen nutzen und keinen Literal-Schlüssel in ParamGet spiegeln. Verzeichnisse mit 0700, Dateien atomar mit 0600 anlegen und bestehende Rechte migrieren. Logs standardmäßig minimieren, Secrets sowie sensible Argumente/Ergebnisse redigieren und eine begrenzte Aufbewahrungsdauer einführen.</p>
+      <p><strong>Referenz.</strong> CWE-312 (Cleartext Storage of Sensitive Information), CWE-732 (Incorrect Permission Assignment).</p>
+    </article>
+
+    <article class="finding low" id="sec-07">
+      <h3><span class="badge low-text">SEC-07 · Niedrig</span> Abhängigkeits- und SBOM-Blindstelle</h3>
+      <p><strong>Beschreibung.</strong> <code>pyproject.toml</code> deklariert keine Runtime-Abhängigkeiten. <code>package.xml</code> nennt nur FreeCAD und Python, wobei Python-Mindestversionen und Projektversionen zwischen beiden Dateien voneinander abweichen. Tatsächlich werden FreeCAD, PySide und weitere vom Host bereitgestellte Komponenten importiert, deren Versionen damit nicht maschinenlesbar inventarisiert werden.</p>
+      <p><strong>Quellbelege.</strong> <code>pyproject.toml:1–10</code>; <code>package.xml:25–27</code>; Importinventar des Pakets.</p>
+      <p><strong>Prüfergebnis.</strong> <code>pip-audit . --dry-run --strict --progress-spinner off</code> meldete, dass das Projekt keine Abhängigkeiten deklariert, und hätte daher <strong>0 Pakete</strong> geprüft. „No known vulnerabilities found“ ist in diesem Fall ausdrücklich kein Nachweis einer verwundbarkeitsfreien Laufzeit.</p>
+      <p><strong>Auswirkung.</strong> Bekannte Schwachstellen in der realen FreeCAD-/Python-/Qt-Laufzeit können Release- und CI-Prüfungen entgehen; Reproduzierbarkeit und Incident-Triage werden erschwert.</p>
+      <p><strong>Empfehlung.</strong> Unterstützte FreeCAD-, Python- und PySide-Versionen eindeutig dokumentieren; Entwicklungs-/Testabhängigkeiten sperren; pro Release eine SBOM für die tatsächliche Zielumgebung erzeugen und gegen eine aktuelle CVE-Datenbank prüfen. Metadaten zwischen <code>pyproject.toml</code> und <code>package.xml</code> synchronisieren.</p>
+    </article>
+  </section>
+
+  <section aria-labelledby="controls">
+    <h2 id="controls">Vorhandene positive Kontrollen</h2>
+    <ul>
+      <li>HTTP-MCP bindet standardmäßig an Loopback und verweigert die Wildcard <code>*</code>.</li>
+      <li>Host- und Origin-Validierung adressieren DNS-Rebinding und Browser-basierte Cross-Origin-Anfragen.</li>
+      <li>Der HTTP-Request-Body ist auf 10 MiB begrenzt; Socket-Timeouts sind gesetzt.</li>
+      <li>FreeCAD-Änderungen werden mit Undo-Transaktionen und optionalen Backups begleitet.</li>
+      <li>Die Chatdarstellung escaped nicht vertrauenswürdigen Text und deaktiviert klickbare Links.</li>
+      <li>Der Makro-Runner verwendet Realpath-Containment und lehnt pfadähnliche Makronamen ab.</li>
+      <li>Ausgehendes unverschlüsseltes MCP wird auf Loopback-Adressen begrenzt.</li>
+      <li>Ein Muster-Scan fand keine fest eingebetteten produktiven Zugangsdaten; Test-Platzhalter und Referenzen wurden manuell triagiert.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="validation">
+    <h2 id="validation">Werkzeuge, Verifikation und Grenzen</h2>
+    <table>
+      <thead><tr><th>Prüfung</th><th>Ergebnis</th><th>Aussage</th></tr></thead>
+      <tbody>
+        <tr><td>Manuelle Datenflussanalyse</td><td>7 berichtspflichtige Befunde</td><td>Codepfade und Vertrauensgrenzen am angegebenen Commit geprüft.</td></tr>
+        <tr><td>Bandit 1.9.4, rekursiv</td><td>3 hoch, 10 mittel, 90 niedrig vor manueller Triage</td><td>Bestätigte Treffer sind in SEC-01, SEC-04 und SEC-05 eingeflossen. <code>shell=True</code>, nicht-kryptografische Hashes und URL-Opener wurden kontextuell bewertet.</td></tr>
+        <tr><td>Pytest 9.0.2</td><td><code>1157 passed, 18 failed, 16 skipped, 88 deselected</code> in 104,84 s</td><td>Die Suite ist in der Audit-Umgebung nicht grün. 17 Fehler beruhen auf fehlendem PySide6/PySide2 im System-Python; ein Test zur Groß-/Kleinschreibung eines FreeCADCmd-Binarynamens schlug fehl. Die 88 Integrationstests sind per Projektkonfiguration ausgeschlossen.</td></tr>
+        <tr><td>Ruff 0.15.6</td><td>119 Meldungen</td><td>Qualitäts-/Wartbarkeitsbefunde; nicht pauschal als Sicherheitslücken gezählt.</td></tr>
+        <tr><td>pip-audit 2.10.0</td><td>0 deklarierte Pakete prüfbar</td><td>Keine belastbare Aussage zur tatsächlichen FreeCAD-Runtime; siehe SEC-07.</td></tr>
+        <tr><td>Sichere Negativproben</td><td>Safe-Mode-Bypässe und absoluter Include bestätigt</td><td>Nur Parser-/Validierungsfunktionen; keine Payload wurde ausgeführt und keine sensible Datei gelesen.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>Grenze der Aussagekraft:</strong> Dieses Audit ist keine Laufzeitfreigabe. Ohne FreeCAD-/PySide-Umgebung wurden GUI, echte Dokumentoperationen und Integrationstests nicht Ende-zu-Ende verifiziert. Ein vollständiger externer Netzwerk- oder Provider-Penetrationstest fand nicht statt.
+    </div>
+  </section>
+
+  <section aria-labelledby="triage">
+    <h2 id="triage">Manuell triagierte Scanner-Hinweise</h2>
+    <ul>
+      <li><code>shell=True</code> im <code>cmd:</code>-Tokenpfad stammt aus explizit benutzerverwalteter Konfiguration; ohne untrusted Interpolation ist dies eine privilegierte Funktion, aber kein separat bestätigter Injection-Befund.</li>
+      <li>SHA-1- und MD5-Nutzung dient Dateinamen beziehungsweise Änderungsdetektion, nicht Passwort- oder Signaturentscheidungen.</li>
+      <li>Dynamische Imports von User Tools, Hooks und Skills sind ein ausdrücklich administrierter lokaler Erweiterungsmechanismus. Diese Verzeichnisse müssen als vertrauenswürdige Codezone dokumentiert werden.</li>
+      <li>Generische URL-Opener wurden nur dann als Befund gewertet, wenn konkrete Validierungs- oder TLS-Probleme vorlagen.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="roadmap">
+    <h2 id="roadmap">Priorisierte Maßnahmen</h2>
+    <ol>
+      <li><strong>P0 – SEC-01:</strong> <code>execute_code</code> aus dem Standard-Toolset entfernen, Einzelbestätigung erzwingen und echte, fail-closed Prozessisolation entwerfen.</li>
+      <li><strong>P0 – SEC-02:</strong> <code>AGENTS.md</code>-Includes auf eine bestätigte Projektwurzel begrenzen und Projekte vor Prompt-Übernahme als vertrauenswürdig markieren lassen.</li>
+      <li><strong>P0 – SEC-04:</strong> Den ungeprüften TLS-Fallback entfernen und Zertifikatsfehler sichtbar abbrechen.</li>
+      <li><strong>P1 – SEC-03:</strong> Nicht-Loopback ohne Authentisierung verbieten; Authentisierung, Principal-Bindung, Rate- und Parallelitätslimits implementieren.</li>
+      <li><strong>P1 – SEC-05:</strong> Temp-Dateien atomar und in einem privaten Verzeichnis erzeugen.</li>
+      <li><strong>P1/P2 – SEC-06:</strong> Schlüssel in den OS-Secret-Store verschieben, 0600/0700 erzwingen, Logs redigieren und Aufbewahrung begrenzen.</li>
+      <li><strong>P2 – SEC-07:</strong> Ziel-Runtime inventarisieren, Versionsmetadaten vereinheitlichen, SBOM und CVE-Prüfung in den Releaseprozess aufnehmen.</li>
+    </ol>
+    <p>Nach P0/P1 ist ein fokussierter Re-Test erforderlich: negative Tool-Call-Tests, Symlink-/Traversal-Tests, TLS-Fehlerfälle, authentisierte und nicht authentisierte MCP-Anfragen sowie ein Lauf in der tatsächlich unterstützten FreeCAD-/PySide-Version.</p>
+  </section>
+
+  <section aria-labelledby="change-record">
+    <h2 id="change-record">Änderungsnachweis</h2>
+    <p>Im Rahmen dieses Audits wurden keine Anwendungsquellen, Konfigurationen oder Dienste verändert. Hinzugefügt wurde ausschließlich dieser Bericht unter <code>docs/audits/</code>. Bereits vorhandene unversionierte Arbeitsbaum-Inhalte – darunter <code>.serena/</code> und <code>.DS_Store</code> – wurden nicht verändert oder entfernt.</p>
+  </section>
+
+  <footer>
+    <p>Erstellt aus dem lokalen Checkout am 2026-09-04. Befunde beziehen sich auf Commit <code>15774022a1c981335135d95928bd6cb4f7ba0431</code>. Spätere Änderungen sind nicht abgedeckt.</p>
+  </footer>
+</main>
+</body>
+</html>

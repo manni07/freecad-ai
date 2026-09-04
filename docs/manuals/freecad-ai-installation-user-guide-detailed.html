@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>FreeCAD AI 0.23.1-alpha — Installation and User Guide</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #17202a;
+      --muted: #536273;
+      --line: #ccd5df;
+      --accent: #1769aa;
+      --accent-soft: #e8f2fb;
+      --warning: #7a4b00;
+      --warning-bg: #fff4d6;
+      --danger: #8b1e2d;
+      --danger-bg: #fdecef;
+      --success: #176b45;
+      --code: #eef2f6;
+      --shadow: 0 8px 26px rgb(23 32 42 / 9%);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101419;
+        --panel: #171d24;
+        --text: #e7edf4;
+        --muted: #aab7c4;
+        --line: #3a4652;
+        --accent: #79bfff;
+        --accent-soft: #16334c;
+        --warning: #ffd27a;
+        --warning-bg: #3e310d;
+        --danger: #ff9aa8;
+        --danger-bg: #431c23;
+        --success: #7bd9ad;
+        --code: #222a33;
+        --shadow: none;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); text-underline-offset: .16em; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    header {
+      color: white;
+      background: linear-gradient(125deg, #123f68, #1769aa 58%, #238b79);
+      padding: 3.5rem max(1.25rem, calc((100vw - 1180px) / 2));
+    }
+    header p { max-width: 780px; margin-bottom: 0; font-size: 1.12rem; }
+    header .eyebrow { margin: 0 0 .5rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 850px; font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1.08; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 850px);
+      gap: 2rem;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 5rem;
+    }
+    nav {
+      align-self: start;
+      position: sticky;
+      top: 1rem;
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 1rem 1.15rem;
+    }
+    nav h2 { margin: 0 0 .6rem; font-size: 1rem; }
+    nav ol { margin: 0; padding-left: 1.25rem; }
+    nav li { margin: .22rem 0; }
+    main { min-width: 0; }
+    section {
+      margin: 0 0 1.5rem;
+      padding: clamp(1.2rem, 3vw, 2rem);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      scroll-margin-top: 1rem;
+    }
+    h2 { margin-top: 0; font-size: 1.65rem; line-height: 1.25; }
+    h3 { margin-top: 1.8rem; font-size: 1.2rem; }
+    h4 { margin-bottom: .35rem; }
+    p, li { max-width: 78ch; }
+    code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { padding: .08em .3em; background: var(--code); border-radius: 4px; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      line-height: 1.45;
+      tab-size: 2;
+    }
+    pre code { padding: 0; background: transparent; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    caption { text-align: left; font-weight: 700; margin-bottom: .4rem; }
+    th, td { padding: .65rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--accent-soft); }
+    .callout {
+      margin: 1rem 0;
+      padding: .9rem 1rem;
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 6px;
+    }
+    .warning { border-color: var(--warning); background: var(--warning-bg); }
+    .danger { border-color: var(--danger); background: var(--danger-bg); }
+    .status { font-weight: 750; color: var(--success); }
+    .muted { color: var(--muted); }
+    .checklist li { margin-bottom: .35rem; }
+    details { margin: .8rem 0; border: 1px solid var(--line); border-radius: 8px; padding: .65rem .85rem; }
+    summary { cursor: pointer; font-weight: 700; }
+    footer { max-width: 850px; margin: 0 auto 3rem; padding: 0 1.25rem; color: var(--muted); }
+    @media (max-width: 820px) {
+      .layout { display: block; }
+      nav { position: static; max-height: none; margin-bottom: 1.5rem; }
+      table { display: block; overflow-x: auto; }
+    }
+    @media print {
+      body { background: white; color: black; font-size: 10.5pt; }
+      header { background: none; color: black; padding: 1rem 0; }
+      .layout { display: block; max-width: none; padding: 0; }
+      nav { position: static; box-shadow: none; page-break-after: always; }
+      section { box-shadow: none; break-inside: avoid; }
+      a { color: black; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">Installation, configuration, and safe operation</p>
+    <h1>FreeCAD AI 0.23.1-alpha</h1>
+    <p>A detailed guide for installing the workbench, connecting an LLM, using Plan and Act modes, and operating its Python and MCP capabilities with their security boundaries visible.</p>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="Table of contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#scope">Scope and status</a></li>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Install by platform</a></li>
+        <li><a href="#configuration">Configuration paths</a></li>
+        <li><a href="#providers">Providers and secrets</a></li>
+        <li><a href="#first-run">First run</a></li>
+        <li><a href="#usage">Plan, Act, and tools</a></li>
+        <li><a href="#python">Opt-in AI Python</a></li>
+        <li><a href="#agents">Project instructions</a></li>
+        <li><a href="#http-mcp">HTTP MCP</a></li>
+        <li><a href="#stdio">STDIO MCP</a></li>
+        <li><a href="#privacy">Logs and privacy</a></li>
+        <li><a href="#sbom">Runtime SBOM</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+        <li><a href="#upgrade">Upgrade and rollback</a></li>
+        <li><a href="#limitations">Limitations and HOLDs</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <section id="scope">
+        <h2>1. Scope and release status</h2>
+        <p>This guide applies to <strong>FreeCAD AI 0.23.1-alpha</strong>. It is alpha software: save documents before AI-assisted changes, keep recoverable copies of important models, and expect interfaces or configuration fields to change.</p>
+        <div class="callout warning">
+          <strong>Security status.</strong> Deterministic unit and security tests are green, but the complete supported FreeCAD/Python/PySide/Qt host matrix has not been verified. Live GUI, live MCP, private-LAN, actual-host vulnerability scanning, and Windows ACL equivalence remain explicit release HOLDs. See <a href="#limitations">Limitations and HOLDs</a> before production use.
+        </div>
+        <p>FreeCAD AI can modify the active FreeCAD document. Structured tools reduce the attack surface, but neither tool calling nor code preflight is an operating-system sandbox. Treat model output, project instructions, user tools, hooks, macros, and LLM responses as untrusted until reviewed.</p>
+      </section>
+
+      <section id="prerequisites">
+        <h2>2. Prerequisites</h2>
+        <ul class="checklist">
+          <li><strong>FreeCAD 1.0 or newer.</strong> FreeCAD 1.1+ commonly uses version-scoped user directories.</li>
+          <li><strong>Python 3.11 or newer</strong> in the FreeCAD runtime. The system Python is not necessarily the Python embedded in FreeCAD.</li>
+          <li>An LLM provider: a local service such as Ollama, or a cloud provider account and API key.</li>
+          <li>Git for a clone-based installation, or an archive tool for a manual copy.</li>
+          <li>Permission to write to the current user's FreeCAD <code>Mod</code> directory.</li>
+        </ul>
+        <p>FreeCAD AI declares no PyPI runtime dependencies and uses the Python standard library. FreeCAD, PySide, and Qt are supplied by the host and must be assessed as part of the actual runtime.</p>
+        <h3>Check the host runtime</h3>
+        <p>In FreeCAD, open <strong>View → Panels → Python console</strong> and inspect the actual runtime:</p>
+        <pre><code>import sys, FreeCAD
+print("FreeCAD:", FreeCAD.Version())
+print("Python:", sys.version)
+print("User config:", FreeCAD.getUserConfigDir())</code></pre>
+        <p>If Python is older than 3.11, install a supported FreeCAD build rather than trying to replace packages inside FreeCAD's bundled runtime.</p>
+      </section>
+
+      <section id="installation">
+        <h2>3. Install by platform</h2>
+        <p>The directory placed below <code>Mod</code> must contain <code>Init.py</code>, <code>InitGui.py</code>, <code>package.xml</code>, and the <code>freecad_ai</code> package. Do not add an extra archive-name directory around them.</p>
+
+        <h3>Linux</h3>
+        <pre><code>git clone https://github.com/ghbalf/freecad-ai.git "$HOME/src/freecad-ai"
+mkdir -p "$HOME/.local/share/FreeCAD/Mod"
+ln -s "$HOME/src/freecad-ai" "$HOME/.local/share/FreeCAD/Mod/freecad-ai"</code></pre>
+        <p>For FreeCAD 1.1, the canonical module directory is commonly <code>~/.local/share/FreeCAD/v1.1/Mod/</code>. Substitute the version used by your installation:</p>
+        <pre><code>mkdir -p "$HOME/.local/share/FreeCAD/v1.1/Mod"
+ln -s "$HOME/src/freecad-ai" "$HOME/.local/share/FreeCAD/v1.1/Mod/freecad-ai"</code></pre>
+        <p>Flatpak and distribution-packaged builds may use a sandbox-specific data root. Confirm the user application-data directory from the running FreeCAD build instead of guessing.</p>
+
+        <h3>macOS</h3>
+        <pre><code>git clone https://github.com/ghbalf/freecad-ai.git "$HOME/src/freecad-ai"
+mkdir -p "$HOME/Library/Application Support/FreeCAD/Mod"
+ln -s "$HOME/src/freecad-ai" \
+  "$HOME/Library/Application Support/FreeCAD/Mod/freecad-ai"</code></pre>
+        <p>FreeCAD 1.1+ may place <code>Mod</code> below a version folder such as <code>v1.1</code>. Use the version-scoped path reported by your FreeCAD build if the unversioned location is not discovered.</p>
+
+        <h3>Windows</h3>
+        <p>The simplest method is to copy the repository folder to the current user's FreeCAD <code>Mod</code> directory:</p>
+        <pre><code>git clone https://github.com/ghbalf/freecad-ai.git "$env:USERPROFILE\src\freecad-ai"
+New-Item -ItemType Directory -Force "$env:APPDATA\FreeCAD\Mod" | Out-Null
+Copy-Item -Recurse "$env:USERPROFILE\src\freecad-ai" \
+  "$env:APPDATA\FreeCAD\Mod\freecad-ai"</code></pre>
+        <p>Alternatively, from an elevated PowerShell prompt, create a directory symbolic link:</p>
+        <pre><code>New-Item -ItemType SymbolicLink \
+  -Path "$env:APPDATA\FreeCAD\Mod\freecad-ai" \
+  -Target "$env:USERPROFILE\src\freecad-ai"</code></pre>
+        <p>For FreeCAD 1.1+, insert the current version folder, for example <code>%APPDATA%\FreeCAD\v1.1\Mod\</code>, if that is the application-data layout selected by the installed build.</p>
+
+        <h3>Activate the workbench</h3>
+        <ol>
+          <li>Save open documents and close FreeCAD normally.</li>
+          <li>Start FreeCAD again.</li>
+          <li>Select <strong>FreeCAD AI</strong> from the workbench selector.</li>
+          <li>If it is missing, use <a href="#troubleshooting">Workbench does not appear</a>.</li>
+        </ol>
+      </section>
+
+      <section id="configuration">
+        <h2>4. Configuration paths and files</h2>
+        <p>The notation <code>&lt;FreeCADAI dir&gt;</code> in this guide means the resolved private configuration directory. Resolution order is:</p>
+        <ol>
+          <li><code>FREECAD_AI_CONFIG_DIR</code>, when explicitly set.</li>
+          <li><code>&lt;FreeCAD user config directory&gt;/FreeCADAI/</code> while running in FreeCAD.</li>
+          <li><code>~/.config/FreeCAD/FreeCADAI/</code> only when FreeCAD cannot be imported, such as a plain Python process.</li>
+        </ol>
+        <p>The authoritative way to find the active directory is the FreeCAD Python console:</p>
+        <pre><code>import os, FreeCAD
+print(os.path.join(FreeCAD.getUserConfigDir(), "FreeCADAI"))</code></pre>
+        <table>
+          <caption>Important entries below &lt;FreeCADAI dir&gt;</caption>
+          <thead><tr><th>Path</th><th>Purpose</th><th>Security note</th></tr></thead>
+          <tbody>
+            <tr><td><code>config.json</code></td><td>Main workbench configuration</td><td>Written atomically; may contain provider references and preferences.</td></tr>
+            <tr><td><code>secrets/</code></td><td>Migrated literal provider secrets</td><td>Managed as private files on POSIX.</td></tr>
+            <tr><td><code>mcp_server.token</code></td><td>Managed HTTP MCP Bearer token</td><td>Never paste its value into documentation, tickets, or logs.</td></tr>
+            <tr><td><code>conversations/</code></td><td>Saved chat sessions</td><td>Contains full conversation content.</td></tr>
+            <tr><td><code>logs/</code></td><td>Session logs</td><td>Metadata-only by default; full logging is sensitive.</td></tr>
+            <tr><td><code>skills/</code>, <code>tools/</code>, <code>hooks/</code></td><td>User extensions</td><td>Review as executable or prompt-affecting content.</td></tr>
+            <tr><td><code>backups/</code></td><td>Pre-execution document recovery snapshots</td><td>May contain sensitive model data.</td></tr>
+          </tbody>
+        </table>
+        <p>On POSIX systems, managed directories and files are hardened to owner-only modes where supported. Windows permission behavior is not claimed to be equivalent to POSIX ACL enforcement.</p>
+        <h3>Using an isolated profile</h3>
+        <pre><code># Linux/macOS example — set before launching FreeCAD
+FREECAD_AI_CONFIG_DIR="$HOME/freecad-ai-profiles/test" freecad</code></pre>
+        <pre><code># Windows PowerShell example
+$env:FREECAD_AI_CONFIG_DIR = "$env:USERPROFILE\freecad-ai-profiles\test"
+&amp; "C:\Program Files\FreeCAD 1.1\bin\FreeCAD.exe"</code></pre>
+        <p>Do not point a production profile at a repository checkout. Synced folders can replicate secrets and conversations; assess the sync provider and endpoint encryption before using one.</p>
+      </section>
+
+      <section id="providers">
+        <h2>5. Providers, models, and secret handling</h2>
+        <p>Open the chat panel's gear menu or <strong>Edit → Preferences → FreeCAD AI</strong>. Choose the provider, base URL, model, token limit, and model parameters. The workbench includes presets for Anthropic, OpenAI, Ollama, Gemini, OpenRouter, Moonshot, DeepSeek, Qwen, Groq, Mistral, Together, Fireworks, xAI, Cohere, SambaNova, MiniMax, Llama, GitHub Models, Hugging Face, Zhipu, and custom OpenAI-compatible endpoints.</p>
+        <h3>Recommended secret choices</h3>
+        <ol>
+          <li><strong>Local provider:</strong> Ollama normally needs no API key.</li>
+          <li><strong><code>file:</code> reference:</strong> store a secret in a separate owner-readable file and enter a value such as <code>file:~/.config/provider-key</code>.</li>
+          <li><strong><code>cmd:</code> reference:</strong> retrieve a secret from an OS credential-store command. This explicitly executes a user-managed shell command; review it carefully.</li>
+          <li><strong>Literal value:</strong> supported for compatibility. On load, known literal provider and reranker secrets are migrated losslessly to managed private files after verified write/read-back.</li>
+        </ol>
+        <div class="callout warning">
+          <strong>Do not put secrets in project files.</strong> Keep API keys out of <code>AGENTS.md</code>, prompts, source control, screenshots, support bundles, and MCP client logs. A <code>file:</code> or <code>cmd:</code> reference is intentionally retained as a reference; logging redaction does not execute commands or read arbitrary referenced files to discover more values.
+        </div>
+        <h3>TLS behavior</h3>
+        <p>Cloud HTTPS requests require a verified SSL context. If certificate verification cannot be initialized, the request fails before network access; there is no unverified TLS fallback. Correct the host certificate store, proxy trust, date/time, or provider URL rather than disabling verification.</p>
+      </section>
+
+      <section id="first-run">
+        <h2>6. First-run checklist</h2>
+        <ol class="checklist">
+          <li>Open or create a disposable FreeCAD document.</li>
+          <li>Select the <strong>FreeCAD AI</strong> workbench and open its chat dock.</li>
+          <li>Open Settings, select a provider and model, then configure a secret reference if needed.</li>
+          <li>Start in <strong>Plan</strong> mode and keep automatic execution disabled.</li>
+          <li>Send a low-risk request, such as “Describe the active document without changing it.”</li>
+          <li>For a modeling smoke test, request a simple box in the disposable document and inspect the proposed action before approval.</li>
+          <li>Save the result under a new filename only after verifying geometry and document state.</li>
+        </ol>
+        <p>If the workbench discovers project instructions, resolve the preview dialog before the provider request. If you did not expect project instructions, choose <strong>Cancel</strong> and inspect the files first.</p>
+      </section>
+
+      <section id="usage">
+        <h2>7. Plan mode, Act mode, and structured tools</h2>
+        <h3>Plan mode</h3>
+        <p>Plan mode is suited to exploration and review. The assistant can propose Python, which is displayed in a review dialog. Use <strong>Check</strong> for a compatibility preflight, inspect the code, and execute only when the intended document and effects are clear. <strong>Fix with AI</strong> sends the code and your correction request back to the provider.</p>
+        <h3>Act mode</h3>
+        <p>Act mode prefers typed, bounded tools. Typical operations create primitives, sketches, pads, pockets, booleans, patterns, transforms, measurements, exports, and document queries. Structured tools are still capable of modifying the active document, but their schemas constrain arguments and make intent easier to review than arbitrary Python.</p>
+        <h3>A safe operating pattern</h3>
+        <ol>
+          <li>Ask the assistant to inspect the document with read-oriented tools.</li>
+          <li>Request a short plan naming objects and dimensions.</li>
+          <li>Use structured tools for the change.</li>
+          <li>Inspect the tree, geometry, units, and active document after each significant step.</li>
+          <li>Use FreeCAD undo or a saved copy if the result is wrong.</li>
+        </ol>
+        <p>Tool reranking can reduce the tool schemas sent per turn. Pinned tools are intersected with the tools currently allowed by the active capability policy; reranking cannot re-enable AI Python.</p>
+        <div class="callout danger">
+          <strong>Dangerous Mode is separate.</strong> It relaxes execution safeguards and can allow arbitrary paths, shell activity, or unbounded execution. It is not required to enable AI Python, and enabling one does not enable the other. Leave Dangerous Mode off unless you have a separately reviewed power-user need.
+        </div>
+      </section>
+
+      <section id="python">
+        <h2>8. Opt-in AI Python and per-call review</h2>
+        <p><code>execute_code</code> is absent from the normal model tool schema and system guidance. To make it available in the GUI:</p>
+        <ol>
+          <li>Enable the dedicated <strong>Allow AI Python</strong> control.</li>
+          <li>Read the warning and explicitly confirm; the safe default is No.</li>
+          <li>Review every individual proposed code block in the code-review dialog.</li>
+        </ol>
+        <p>The permission is process-only, is not persisted to configuration, and starts disabled in a new process. It is independent of Dangerous Mode. Each call is checked again immediately before dispatch, so stale schemas or a changed toggle cannot bypass the gate. Rejecting a code call stops the remaining tool batch and prevents a provider retry for that denied request.</p>
+        <h3>Preflight statuses</h3>
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th><th>Allowed response</th></tr></thead>
+          <tbody>
+            <tr><td><strong>PASSED</strong></td><td>The compatibility preflight completed without a detected validation error.</td><td>You may still review and approve or cancel. This is not proof of safety.</td></tr>
+            <tr><td><strong>REJECTED</strong></td><td>The preflight detected a definite validation failure.</td><td>Execution is blocked; there is no override.</td></tr>
+            <tr><td><strong>UNAVAILABLE</strong></td><td>The preflight environment could not be used.</td><td>GUI-only second warning may allow execution without preflight.</td></tr>
+            <tr><td><strong>ERROR</strong></td><td>The preflight itself failed unexpectedly.</td><td>GUI-only second warning may allow execution without preflight.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout danger">
+          <strong>Preflight is not isolation.</strong> Approved code runs with the FreeCAD user's OS permissions and can read or modify accessible files, start processes, use the network, expose secrets, or damage a document. Prefer structured tools. Review imports, file paths, subprocess use, network calls, loops, and the active document before approval.
+        </div>
+      </section>
+
+      <section id="agents">
+        <h2>9. AGENTS.md and FREECAD_AI.md project instructions</h2>
+        <p>Place <code>AGENTS.md</code> or <code>FREECAD_AI.md</code> beside an <code>.FCStd</code> document to provide project conventions such as units, naming, or preferred modeling workflows. Discovery checks the document directory, up to three parent levels, and then <code>&lt;FreeCADAI dir&gt;/AGENTS.md</code>.</p>
+        <pre><code># AGENTS.md
+Use millimetres.
+Prefer PartDesign Body → Sketch → Pad.
+Ask before exporting or overwriting a file.
+
+&lt;!-- include: standards/materials.md --&gt;</code></pre>
+        <h3>Trust workflow</h3>
+        <p>Before any content reaches a provider, the dialog shows the canonical root, source, ordered manifest, SHA-256 fingerprint, and exact preview snapshot. Choose:</p>
+        <ul>
+          <li><strong>Trust and send:</strong> allow exactly that fingerprint.</li>
+          <li><strong>Ignore this version:</strong> send no project-instruction text for that fingerprint.</li>
+          <li><strong>Cancel:</strong> abort the request without clearing the input, attachments, or conversation.</li>
+        </ul>
+        <p>A changed fingerprint triggers a new preview. The approved in-memory snapshot—not a later disk reread—is used in the request.</p>
+        <h3>Include and content boundaries</h3>
+        <p>Includes must be relative, contained by the canonical instruction root, regular files, non-symlinks, and strict UTF-8. Absolute paths, <code>..</code> traversal, sibling-prefix tricks, symlink escapes, cycles, NUL bytes, excessive depth, and oversized bundles reject the entire bundle. Current limits are 64 KiB per file, 256 KiB total, and five include levels.</p>
+        <div class="callout warning">
+          <strong>Local-race limitation.</strong> The current resolver validates a path before opening it rather than descriptor-pinning every AGENTS read. Fingerprint plus exact preview prevents unreviewed provider transmission, but descriptor-pinned <code>open</code>/<code>fstat</code> is still tracked as defense-in-depth against a concurrent local path swap.
+        </div>
+        <p>Supported substitutions include <code>{{document_name}}</code>, <code>{{object_count}}</code>, and <code>{{active_body}}</code>. The fingerprint is based on the raw instruction files and manifest, so changing live document variables does not silently create a different trusted file version.</p>
+      </section>
+
+      <section id="http-mcp">
+        <h2>10. HTTP MCP with mandatory Bearer authentication</h2>
+        <p>HTTP MCP exposes structured FreeCAD tools to an external client. It supports Streamable HTTP at <code>/mcp</code> and a legacy SSE endpoint for compatibility. <code>execute_code</code> is physically excluded from the HTTP registry; authenticated <code>run_macro</code> remains available.</p>
+        <div class="callout danger">
+          <strong>Do not expose this server to the Internet.</strong> Binding is limited to loopback or one unambiguous private/link-local numeric address. HTTP does not encrypt the Bearer token or model traffic. A same-LAN observer may capture them. Use loopback by default.
+        </div>
+        <h3>Managed token</h3>
+        <p>On first start, the managed token is exclusively generated at <code>&lt;FreeCADAI dir&gt;/mcp_server.token</code> with high entropy and private POSIX permissions. Startup reports the path, never the value. The same token is reused until deliberately rotated.</p>
+        <h3>Custom token file</h3>
+        <p>Set <code>MCP_TOKEN_FILE</code> only when a separate secret-management workflow owns the token. The file must already exist, be non-empty and correctly formatted, be a regular non-symlink file owned by the current user, and have restrictive permissions. FreeCAD AI treats a custom path as read-only: it does not create, chmod, replace, or truncate it. Any validation failure aborts before backend creation or network bind.</p>
+        <h3>Start inside FreeCAD</h3>
+        <p>Use the <strong>MCP Server</strong> toolbar/menu action, or start the same controller from a terminal:</p>
+        <pre><code># Linux AppImage example; defaults to 127.0.0.1:3000
+/path/to/FreeCAD.AppImage /path/to/freecad-ai/mcp_server_http.py</code></pre>
+        <p>Optional environment settings are <code>MCP_HOST</code>, <code>MCP_PORT</code>, <code>MCP_ALLOWED_HOSTS</code>, and <code>MCP_TOKEN_FILE</code>. A hostname is resolved exactly once and must produce one acceptable address; the server binds the resulting numeric address. Wildcard, public, unspecified, multicast, ambiguous, mapped, and unsupported scoped addresses fail closed.</p>
+        <h3>Test without exposing the token in process arguments</h3>
+        <p>The following loopback example streams a curl configuration through standard input. The token is not placed in curl's command-line arguments. Disable shell tracing first and do not capture standard input:</p>
+        <pre><code>set +x
+MCP_URL='http://127.0.0.1:3000/mcp'
+MCP_TOKEN_FILE='/replace/with/the/reported/token/path'
+
+# Negative check: expected HTTP 401.
+curl --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
+  -X POST "$MCP_URL" -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# Authenticated check: token travels on stdin, not argv.
+{ printf 'header = "Authorization: Bearer '; \
+  tr -d '\r\n' &lt; "$MCP_TOKEN_FILE"; printf '"\n'; } |
+  curl --config - --silent --show-error -X POST "$MCP_URL" \
+  -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'</code></pre>
+        <p>Inspect the response without writing the Authorization header. Confirm that <code>execute_code</code> is absent and that only expected structured tools are listed.</p>
+        <h3>HTTP response guide</h3>
+        <table>
+          <thead><tr><th>Status</th><th>Likely cause</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>401</code></td><td>Missing, malformed, duplicate, or wrong Bearer authorization</td><td>Verify the client reads the correct token file without printing it.</td></tr>
+            <tr><td><code>403</code></td><td>Rejected Host or Origin policy</td><td>Use the numeric address actually bound and an explicit allowed host.</td></tr>
+            <tr><td><code>429</code></td><td>Global request bucket exhausted</td><td>Honor <code>Retry-After</code> and reduce request rate.</td></tr>
+            <tr><td><code>503</code></td><td>Eight concurrent request slots are occupied</td><td>Close stale SSE sessions or retry later; do not raise limits casually.</td></tr>
+          </tbody>
+        </table>
+        <p>Authentication is applied to every route and verb before body parsing and dispatch. Default admission is 60 requests per minute with burst 20 and at most eight concurrent requests reserved before worker-thread creation.</p>
+      </section>
+
+      <section id="stdio">
+        <h2>11. STDIO MCP</h2>
+        <p>STDIO mode lets an MCP client spawn a headless FreeCAD process and exchange JSON-RPC on standard input/output. It has no HTTP listener or Bearer token. For compatibility, its registry still includes <code>execute_code</code>; this is an accepted privileged boundary, not a claim of safety.</p>
+        <pre><code>claude mcp add freecad -- bash -c \
+  'exec 3&gt;&amp;1 1&gt;&amp;2 &amp;&amp; /path/to/FreeCAD.AppImage -c /path/to/freecad-ai/mcp_server_entry.py'</code></pre>
+        <p>The shell wrapper moves FreeCAD's startup banner to standard error and reserves clean standard output for MCP JSON-RPC. Adjust the FreeCAD executable path for the platform and client. Review client-side tool permissions, because a local STDIO client can invoke the capabilities exposed by this registry.</p>
+        <p>Choose STDIO when the client should own a separate FreeCAD process. Choose authenticated loopback HTTP when an authorized client must operate the document visible in an existing GUI process. Do not weaken HTTP authentication to mimic STDIO.</p>
+      </section>
+
+      <section id="privacy">
+        <h2>12. Conversations, logs, and privacy</h2>
+        <ul>
+          <li>Conversations are saved with full message content so sessions can be resumed.</li>
+          <li>Session logs default to <strong>metadata</strong>: tool name, success, duration, turn, and error class—without messages, arguments, or results.</li>
+          <li><strong>Full</strong> logging is an explicit diagnostic opt-in. Known key names and configured literal secrets are recursively redacted, but ordinary sensitive document content may remain.</li>
+          <li>Provider requests may include prompts, document context, selected object data, attachments, screenshots, and approved project instructions. Review the provider's retention and training policy.</li>
+          <li>Default retention limits are zero, meaning automatic deletion is disabled. Configure age/count retention deliberately and back up before changing it.</li>
+        </ul>
+        <p>Before sharing a support bundle, inspect <code>config.json</code>, conversations, logs, project instructions, macros, and attachments. Do not rely on redaction as the sole control for a full diagnostic log.</p>
+      </section>
+
+      <section id="sbom">
+        <h2>13. Generate an actual-runtime CycloneDX SBOM</h2>
+        <p>The inventory must run inside the target FreeCAD runtime. It emits CycloneDX 1.5 JSON containing exactly five required components: FreeCAD AI, FreeCAD, Python, the active PySide binding, and Qt. Missing or unsafe version strings cause a non-zero exit and no apparently complete BOM.</p>
+        <pre><code># Run with the target host's FreeCAD command, not an unrelated system Python.
+/path/to/FreeCADCmd -c "import sys; from freecad_ai.runtime_inventory import main; sys.exit(main(['--output','/private/output/freecad-ai-runtime.cdx.json']))"</code></pre>
+        <p>The explicit output refuses symlinks and is written privately and atomically on POSIX. Review the JSON for unexpected identity or path fields, validate it against the CycloneDX 1.5 schema, then scan the same immutable file with an approved, current scanner such as Grype or Trivy.</p>
+        <div class="callout warning">
+          <strong>Do not confuse scopes.</strong> A successful <code>pip-audit</code> over the explicitly empty declared PyPI dependency set does not audit host-provided FreeCAD, Python, PySide, or Qt. Release evidence requires the actual-host SBOM and an external vulnerability scan.
+        </div>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>14. Troubleshooting</h2>
+        <details open>
+          <summary id="workbench-missing">The workbench does not appear</summary>
+          <ol>
+            <li>Confirm the installed folder directly contains <code>InitGui.py</code>.</li>
+            <li>Check the version-scoped <code>Mod</code> directory for FreeCAD 1.1+.</li>
+            <li>Open <strong>View → Panels → Report view</strong> and inspect import errors.</li>
+            <li>Verify the Python runtime is 3.11 or newer.</li>
+            <li>Check that a symlink target still exists and is readable.</li>
+          </ol>
+        </details>
+        <details>
+          <summary>Provider requests fail before connecting</summary>
+          <p>Verify the base URL, provider/model pairing, and secret reference. For HTTPS certificate errors, repair the CA/proxy environment; no insecure TLS fallback exists. For a <code>file:</code> reference, check that the expanded path exists and is readable. For <code>cmd:</code>, run and review the command separately without logging its output.</p>
+        </details>
+        <details>
+          <summary>AI Python is missing from the model's tools</summary>
+          <p>This is the secure default. Enable <strong>Allow AI Python</strong> for the current process and confirm the warning. A new process starts locked. Dangerous Mode is unrelated. HTTP MCP never exposes <code>execute_code</code>, even when the GUI toggle is armed.</p>
+        </details>
+        <details>
+          <summary>Project instructions stop the request</summary>
+          <p>Inspect every path in the preview. Remove absolute/traversing includes, symlinks, invalid UTF-8, cycles, or oversized content. Resolver errors fail closed and leave the draft request intact. Do not bypass the resolver by copying unreviewed instruction text into a prompt.</p>
+        </details>
+        <details>
+          <summary>HTTP MCP will not start</summary>
+          <p>Check the reported error without pasting the token. Custom token files must pass owner, mode, type, non-symlink, and content checks. The host must resolve once to one allowed numeric address. Public, wildcard, ambiguous, multicast, unspecified, mapped, or unsupported scoped addresses are rejected before backend creation.</p>
+        </details>
+        <details>
+          <summary>HTTP MCP starts, but the client cannot connect</summary>
+          <p>Confirm the client uses <code>/mcp</code>, sends exactly one Bearer header on every request, and dials the bound numeric address. A 401 indicates authentication; 403 indicates Host/Origin; 429 indicates rate limiting; 503 indicates concurrency saturation. Some MCP clients discover tools only at session start and must begin a new client session after configuration.</p>
+        </details>
+        <details>
+          <summary>A test suite exits successfully but reports skips</summary>
+          <p>Skips are not acceptance evidence. In the remediation environment, all 88 selected integration tests skipped because the FreeCAD AppImage was absent. Keep GUI/runtime release approval on HOLD until every required test executes and passes in a supported host.</p>
+        </details>
+      </section>
+
+      <section id="upgrade">
+        <h2>15. Upgrade and rollback</h2>
+        <h3>Before an upgrade</h3>
+        <ol>
+          <li>Save and close important FreeCAD documents.</li>
+          <li>Record the current add-on version or Git commit.</li>
+          <li>Make a protected backup of <code>&lt;FreeCADAI dir&gt;</code>, including conversations, trust records, and secret references. Protect the backup like the original.</li>
+          <li>Do not delete migration snapshots or old secret files until the new version has been verified.</li>
+        </ol>
+        <h3>Upgrade a clone</h3>
+        <pre><code>cd /path/to/freecad-ai
+git status --short
+git fetch --tags
+# Select a reviewed release/tag according to your change-control policy.</code></pre>
+        <p>Do not overwrite a dirty checkout. Preserve local changes in a recoverable branch or patch before selecting a new version. Save work and restart FreeCAD manually only when you are ready to load the new add-on code.</p>
+        <h3>Rollback</h3>
+        <ol>
+          <li>Stop making document changes and save a copy under a new name.</li>
+          <li>Record the exact failure and version; do not include secrets.</li>
+          <li>Restore the prior reviewed add-on directory or commit.</li>
+          <li>Retain migrated secret and trust files. Do not weaken permissions or enable unauthenticated HTTP as a workaround.</li>
+          <li>Restart FreeCAD only after saving work and confirming the intended process.</li>
+          <li>Verify provider access, project-instruction preview, AI-Python default lock, and MCP authentication using a disposable document.</li>
+        </ol>
+        <p>Configuration rollback is not automatically equivalent to source rollback: older versions may ignore new fields or lack authenticated HTTP. If an older build cannot use the secure HTTP contract, use a reviewed STDIO workflow rather than restoring an unauthenticated listener.</p>
+      </section>
+
+      <section id="limitations">
+        <h2>16. Known limitations and release HOLDs</h2>
+        <table>
+          <thead><tr><th>Area</th><th>Current status</th><th>Required evidence</th></tr></thead>
+          <tbody>
+            <tr><td>Supported FreeCAD GUI/runtime</td><td>HOLD</td><td>Full integration suite and GUI acceptance on a supported FreeCAD/PySide host, with no skips.</td></tr>
+            <tr><td>Actual-host SBOM and CVEs</td><td>HOLD</td><td>Five-component BOM from the target runtime, schema validation, and approved external scan.</td></tr>
+            <tr><td>Live authenticated MCP</td><td>HOLD</td><td>Authorized positive/negative handshake in disposable FreeCAD, with zero unauthenticated dispatch.</td></tr>
+            <tr><td>Private LAN</td><td>HOLD</td><td>Separately approved isolated-LAN test; plaintext same-LAN token capture remains an accepted residual.</td></tr>
+            <tr><td>Windows filesystem controls</td><td>HOLD</td><td>Owner-only ACL, reparse-point, atomic-write, and SBOM-output evidence on Windows.</td></tr>
+            <tr><td>AI Python</td><td>Accepted privileged residual</td><td>Process-only opt-in and per-call review reduce exposure; approved code still has user privileges.</td></tr>
+            <tr><td>STDIO <code>execute_code</code></td><td>Accepted compatibility residual</td><td>Keep local client permissions and registry behavior under review.</td></tr>
+            <tr><td>HTTP <code>run_macro</code></td><td>Accepted authenticated residual</td><td>Bearer authentication must remain mandatory; macro capability remains privileged.</td></tr>
+            <tr><td>AGENTS local path-swap race</td><td>Open defense-in-depth item</td><td>Descriptor-pinned read and same-descriptor type/identity verification.</td></tr>
+            <tr><td>Static and supply-chain backlog</td><td>Open</td><td>Project-wide Ruff/Bandit ratchet and immutable GitHub Action/transitive pins.</td></tr>
+          </tbody>
+        </table>
+        <p class="status">Operational conclusion: use the workbench for controlled evaluation with saved documents, reviewed prompts and tools, private profiles, and loopback networking. Do not describe the alpha as fully runtime-certified until the HOLD evidence above is complete.</p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <p>FreeCAD AI 0.23.1-alpha installation and user guide. This file is self-contained and uses no external scripts, fonts, or assets.</p>
+  </footer>
+</body>
+</html>

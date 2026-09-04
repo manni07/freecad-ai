@@ -19,7 +19,12 @@ QLabel = QtWidgets.QLabel
 QPushButton = QtWidgets.QPushButton
 QFont = QtGui.QFont
 
-from ..core.executor import ExecutionResult, execute_code, validate_code
+from ..core.executor import (
+    ExecutionResult,
+    PreflightStatus,
+    execute_code,
+    validate_code,
+)
 
 
 class _FixPromptDialog(QDialog):
@@ -128,6 +133,7 @@ class CodeReviewDialog(QDialog):
         self.last_error_result = None
         self.fix_requested = False
         self._editable = False
+        self._preflight_status = None
 
         self.setWindowTitle(translate("CodeReviewDialog", "Review Code"))
         self.setMinimumSize(600, 450)
@@ -149,6 +155,7 @@ class CodeReviewDialog(QDialog):
         self.code_edit.setFont(font)
         self.code_edit.setPlainText(self.code)
         self.code_edit.setReadOnly(True)
+        self.code_edit.textChanged.connect(self._invalidate_preflight)
         colors = _get_theme_colors()
         self.code_edit.setStyleSheet(
             f"QTextEdit {{ background-color: {colors['code_bg']}; color: {colors['code_text']}; "
@@ -228,6 +235,13 @@ class CodeReviewDialog(QDialog):
                 f"border: 1px solid {colors['code_border']}; padding: 8px; }}"
             )
 
+    def _invalidate_preflight(self):
+        """A preflight decision applies only to the exact reviewed text."""
+        self._preflight_status = None
+        if hasattr(self, "execute_btn"):
+            self.execute_btn.setEnabled(True)
+            self.execute_btn.setText(translate("CodeReviewDialog", "Execute"))
+
     def _render_result(self, result, success_msg, failure_msg):
         """Render an ExecutionResult into the shared result widgets."""
         self.result_label.setVisible(True)
@@ -259,17 +273,50 @@ class CodeReviewDialog(QDialog):
         self.code = self.code_edit.toPlainText()
         from ..core.dangerous_mode import get_dangerous_mode
         result = validate_code(self.code, skip_safety=get_dangerous_mode().active)
+        self._preflight_status = result.status
         self._render_result(
             result,
             translate("CodeReviewDialog", "Validated — no errors in sandbox."),
             translate("CodeReviewDialog", "Validation found issues:"),
         )
         self.last_error_result = None if result.success else result
+        if result.status is PreflightStatus.REJECTED:
+            self.execute_btn.setEnabled(False)
+            self.execute_btn.setText(translate("CodeReviewDialog", "Execute"))
+        elif result.status in (PreflightStatus.UNAVAILABLE,
+                               PreflightStatus.ERROR):
+            self.execute_btn.setEnabled(True)
+            self.execute_btn.setText(translate(
+                "CodeReviewDialog", "Execute without preflight"))
+        else:
+            self.execute_btn.setEnabled(True)
+            self.execute_btn.setText(translate("CodeReviewDialog", "Execute"))
 
     def _execute(self):
         """Execute the code and show results."""
         self.code = self.code_edit.toPlainText()
-        self.execution_result = execute_code(self.code)
+        allow_unvalidated = False
+        if self._preflight_status in (PreflightStatus.UNAVAILABLE,
+                                      PreflightStatus.ERROR):
+            box = QtWidgets.QMessageBox(self)
+            box.setIcon(QtWidgets.QMessageBox.Warning)
+            box.setWindowTitle(translate(
+                "CodeReviewDialog", "Execute without preflight?"))
+            box.setText(translate(
+                "CodeReviewDialog",
+                "The preflight could not validate this code."))
+            box.setInformativeText(translate(
+                "CodeReviewDialog",
+                "The code will run with your FreeCAD user's permissions. "
+                "Continue only if you reviewed it completely."))
+            box.setStandardButtons(
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            box.setDefaultButton(QtWidgets.QMessageBox.No)
+            if box.exec() != QtWidgets.QMessageBox.Yes:
+                return
+            allow_unvalidated = True
+        self.execution_result = execute_code(
+            self.code, allow_unvalidated=allow_unvalidated)
         self._render_result(
             self.execution_result,
             translate("CodeReviewDialog", "Code executed successfully."),

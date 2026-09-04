@@ -340,8 +340,17 @@ RESPONSE_FORMAT = """\
 - If the user asks a question (not requesting geometry), answer in plain text
 - If you need more information to proceed, ask the user"""
 
+_AGENTS_MD_OMITTED = object()
 
-def _build_static_prompt(mode: str, tools_enabled: bool) -> str:
+
+def _without_execute_code_guidance(text: str) -> str:
+    """Remove raw-code recommendations when the capability is unavailable."""
+    return "\n".join(
+        line for line in text.splitlines() if "execute_code" not in line)
+
+
+def _build_static_prompt(mode: str, tools_enabled: bool,
+                         code_tool_enabled: bool = False) -> str:
     """Build the static (instruction) part of the system prompt.
 
     This is the part the user can customize in Settings.
@@ -350,7 +359,10 @@ def _build_static_prompt(mode: str, tools_enabled: bool) -> str:
 
     # Mode instructions
     if tools_enabled and mode == "act":
-        sections.append(ACT_MODE_TOOLS)
+        tools_prompt = ACT_MODE_TOOLS
+        if not code_tool_enabled:
+            tools_prompt = _without_execute_code_guidance(tools_prompt)
+        sections.append(tools_prompt)
     elif mode == "plan":
         sections.append(PLAN_MODE)
     else:
@@ -358,7 +370,10 @@ def _build_static_prompt(mode: str, tools_enabled: bool) -> str:
     sections.append("")
 
     if tools_enabled:
-        sections.append(CODE_CONVENTIONS_TOOLS)
+        conventions = CODE_CONVENTIONS_TOOLS
+        if not code_tool_enabled:
+            conventions = _without_execute_code_guidance(conventions)
+        sections.append(conventions)
     else:
         sections.append(FREECAD_API_REFERENCE)
         sections.append("")
@@ -381,24 +396,30 @@ def get_default_system_prompt(mode: str = "act",
     return _build_static_prompt(mode, tools_enabled)
 
 
-def build_system_prompt(mode: str = "plan", agents_md: str = "",
+def build_system_prompt(mode: str = "plan", agents_md=_AGENTS_MD_OMITTED,
                         tools_enabled: bool = False,
-                        override: str = "") -> str:
+                        override: str = "",
+                        code_tool_enabled: bool = False) -> str:
     """Build the full system prompt.
 
     Args:
         mode: "plan" or "act"
-        agents_md: Contents of AGENTS.md / FREECAD_AI.md file, if any
+        agents_md: Captured AGENTS.md / FREECAD_AI.md content. When omitted,
+                   the trusted-current compatibility loader is used. An
+                   explicit empty string means no instructions for this request.
         tools_enabled: Whether tool calling is active (shorter prompt, no API ref)
         override: If non-empty, replaces the static instruction portion of the
                   prompt. Dynamic sections (document context, skills, AGENTS.md)
                   are still appended.
+        code_tool_enabled: Whether raw Python execution is available to the LLM.
     """
     # Static instructions — either user override or generated default
     if override:
-        static = override
+        static = (override if code_tool_enabled
+                  else _without_execute_code_guidance(override))
     else:
-        static = _build_static_prompt(mode, tools_enabled)
+        static = _build_static_prompt(
+            mode, tools_enabled, code_tool_enabled=code_tool_enabled)
 
     sections = [static]
 
@@ -428,7 +449,7 @@ def build_system_prompt(mode: str = "plan", agents_md: str = "",
         pass
 
     # AGENTS.md
-    if not agents_md:
+    if agents_md is _AGENTS_MD_OMITTED:
         agents_md = load_agents_md()
     if agents_md:
         sections.append("## Project Instructions (from AGENTS.md)")
