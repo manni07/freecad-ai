@@ -7,7 +7,7 @@ Final verification:2026-09-05. TCCode full workflow plus Agent Workflow v4 thoro
 - Investigation base `6e51894` was excluded from publication because it contained an unrelated unpublished dispatcher predecessor.
 - Scoped code commit `b785feb8748327c4b5dc439f8500320f004b102f` on base `5abeb8879d093a7c0853ecd34fd8aa8f80d15280` contains exactly nine current-task code/test files.
 - Branch `agent-workflow/20260905-report-errors`; public destination `manni07/freecad-ai`, explicitly not the upstream fork target.
-- Documentation commit/PR/merge are root-owned after this dossier freeze. The user's previous commit/PR/merge authorization applies to this scoped task; unrelated dirty parent changes are excluded.
+- Documentation commit `c6fd41448b5d9bd4af4b2e0921986915f5677f10`; publication: [PR #3](https://github.com/manni07/freecad-ai/pull/3). Consult that PR for authoritative CI, merge state and merge SHA. The user's previous commit/PR/merge authorization applies to this scoped task; unrelated dirty parent changes are excluded.
 - Public placeholders: `<worktree>`, `<user-checkout>`, `<FreeCAD.app>`, `<python-test-site-packages>`, `<original.FCStd>`. Exact private paths and model hash are retained only in untracked `.report-errors-evidence/orchestrator-private-path-mapping.json`.
 
 ## Change and evidence

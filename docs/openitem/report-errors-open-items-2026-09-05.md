@@ -12,4 +12,4 @@ Created before final documentation, 2026-09-05. Exactly three High, three Medium
 | M3 | Medium | Full relevant regression and independent review | CLOSED | Final exact-code1642 passed177.58s, zero skips; critical Ruff and nine-file independent review PASS |
 | L1 | Low | Unavailable Sans alias adds warning and font lookup cost | CLOSED | Real widgets/PNG with installed application font pass; old Sans fixture RED; native GUI proof separate |
 | L2 | Low | External agy review syntax and availability | CLOSED | Corrected plan-only print invocation returned 0; accepted/rejected feedback recorded in dossiers |
-| L3 | Low | Documentation continuity and scoped publication | DOCUMENTATION_COMPLETE_PUBLICATION_ROOT_OWNED | All linked dossiers/manual/diary/PPD checked; root creates docs commit/PR/merge after freeze |
+| L3 | Low | Documentation continuity and scoped publication | CLOSED | Linked dossiers checked; scoped commits pushed to [PR #3](https://github.com/manni07/freecad-ai/pull/3); GitHub records final CI/merge status |

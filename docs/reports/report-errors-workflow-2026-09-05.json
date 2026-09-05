@@ -73,8 +73,8 @@
     {
       "id": 9,
       "name": "documentation devops performance",
-      "status": "DOCUMENTATION_PASS_PUBLICATION_ROOT_OWNED",
-      "evidence": "Linked dossiers/STP/HTML/diary/PPD privacy and structure checked; current task code verified; PR/merge root-owned"
+      "status": "PASS_PRE_MERGE",
+      "evidence": "Linked dossiers/STP/HTML/diary/PPD privacy and structure checked; code committed and pushed; PR3 created; GitHub records subsequent CI and merge status"
     }
   ],
   "agents": {
@@ -104,7 +104,8 @@
   "native_core_recovery_status": "DIAGNOSED_UPSTREAM_UNPATCHED",
   "investigation_base": "6e51894",
   "scoped_code_commit": "b785feb8748327c4b5dc439f8500320f004b102f",
-  "publication_status": "CODE_VERIFIED_DOCUMENTATION_READY_PR_MERGE_ROOT_OWNED",
+  "publication_status": "PR_CREATED_SEE_GITHUB_FOR_CURRENT_MERGE_STATE",
+  "pull_request": "https://github.com/manni07/freecad-ai/pull/3",
   "full_unit_suite": {
     "passed": 1642,
     "skipped": 0,
