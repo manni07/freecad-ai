@@ -38,11 +38,8 @@ Environment variables:
                      have private owner-only permissions.
 """
 
-import logging
 import os
 import sys
-
-logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
 # __file__ is undefined when this script is run via exec(open(...).read())
 # (a documented usage); guard so that path raises no NameError. In that mode
@@ -54,6 +51,9 @@ if _script_path:
         sys.path.insert(0, script_dir)
 
 import FreeCAD
+from freecad_ai.console_logging import configure_console_logging
+
+configure_console_logging(FreeCAD.Console)
 
 if not FreeCAD.ActiveDocument:
     FreeCAD.newDocument("Unnamed")
