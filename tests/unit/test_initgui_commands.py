@@ -13,6 +13,7 @@ reflect, and the tick never changes afterwards.
 """
 
 import pathlib
+import logging
 import runpy
 import sys
 import types
@@ -25,6 +26,8 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 @pytest.fixture
 def initgui(monkeypatch):
     """Exec InitGui.py against stubbed FreeCAD modules; yield its namespace."""
+    logger = logging.getLogger("freecad_ai")
+    logging_state = logger.handlers[:], logger.level, logger.propagate
     gui = types.ModuleType("FreeCADGui")
 
     class _Workbench:
@@ -61,7 +64,9 @@ def initgui(monkeypatch):
     source = (PROJECT_ROOT / "InitGui.py").read_text()
     namespace = {}
     exec(compile(source, "InitGui.py", "exec"), namespace)
-    return namespace
+    yield namespace
+    logger.handlers, level, logger.propagate = logging_state
+    logger.setLevel(level)
 
 
 @pytest.fixture

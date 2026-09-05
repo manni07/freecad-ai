@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "context_version": 4,
+  "task": "FreeCAD report-view warnings/errors",
+  "mode": "thorough",
+  "team_size_total": 4,
+  "quality": "production",
+  "branch": "agent-workflow/20260905-report-errors",
+  "base": "5abeb8879d093a7c0853ecd34fd8aa8f80d15280",
+  "current_stage": 9,
+  "stages": [
+    {
+      "id": 1,
+      "name": "foundation and review",
+      "status": "PASS",
+      "evidence": "ARD/TRD/PD/ID created; root and independent worker source review; agy text-only review incorporated"
+    },
+    {
+      "id": 2,
+      "name": "implementation simulation",
+      "status": "PASS",
+      "scores": [
+        98,
+        97,
+        96,
+        98,
+        98
+      ],
+      "scope": "design readiness; model mutation HOLD"
+    },
+    {
+      "id": 3,
+      "name": "bounded implementation",
+      "status": "PASS"
+    },
+    {
+      "id": 4,
+      "name": "test strategy refinement",
+      "status": "PASS",
+      "preimplementation_td": "DEFINED"
+    },
+    {
+      "id": 5,
+      "name": "test simulation",
+      "status": "PASS",
+      "scores": [
+        99,
+        98,
+        97,
+        99,
+        98
+      ],
+      "scope": "strategy readiness only"
+    },
+    {
+      "id": 6,
+      "name": "security and unit tests",
+      "status": "PASS",
+      "evidence": "1642 passed177.58s zero skipped; critical lint and independent9-file review PASS"
+    },
+    {
+      "id": 7,
+      "name": "integration",
+      "status": "PASS_SCOPED",
+      "evidence": "native copied model open PASS; installed validator CWD A/B PASS; full Shape.isValid NOT_COMPLETED"
+    },
+    {
+      "id": 8,
+      "name": "native E2E",
+      "status": "PASS_ISOLATED",
+      "evidence": "native GUI severity/thread/font probe PASS exit0; user live activation HOLD"
+    },
+    {
+      "id": 9,
+      "name": "documentation devops performance",
+      "status": "PASS_PRE_MERGE",
+      "evidence": "Linked dossiers/STP/HTML/diary/PPD privacy and structure checked; code committed and pushed; PR3 created; GitHub records subsequent CI and merge status"
+    }
+  ],
+  "agents": {
+    "root": "supervisor/native proof/integration",
+    "workflow_orchestrator": "dossiers/stages/gates/risks/final documentation",
+    "logging_fix": "logger/font fix and tests",
+    "recovery_review": "model diagnosis and independent review"
+  },
+  "constraints": [
+    "No restart or reboot",
+    "No stopping existing GUI or server",
+    "No live profile/model writes",
+    "No original model overwrite",
+    "No paid model operations",
+    "No parent dirty changes staged"
+  ],
+  "deployment_status": "HOLD_NOT_ACTIVATED",
+  "agy": {
+    "help": "PASS",
+    "initial_print": "rc2 flag-shape rejected",
+    "corrected_print": "rc0 text-only review",
+    "session_id": null,
+    "ppd_review": "rc0 text-only incorporated"
+  },
+  "risk_register": "../openitem/report-errors-open-items-2026-09-05.md",
+  "full_geometry_status": "NOT_COMPLETED_CPU_BOUND",
+  "native_core_recovery_status": "DIAGNOSED_UPSTREAM_UNPATCHED",
+  "investigation_base": "6e51894",
+  "scoped_code_commit": "b785feb8748327c4b5dc439f8500320f004b102f",
+  "publication_status": "PR_CREATED_SEE_GITHUB_FOR_CURRENT_MERGE_STATE",
+  "pull_request": "https://github.com/manni07/freecad-ai/pull/3",
+  "full_unit_suite": {
+    "passed": 1642,
+    "skipped": 0,
+    "seconds": 177.58,
+    "exit_code": 0,
+    "commit": "b785feb8748327c4b5dc439f8500320f004b102f"
+  },
+  "activation_patch_status": "PREPARED_APPLY_CHECK_PASS_NOT_APPLIED"
+}

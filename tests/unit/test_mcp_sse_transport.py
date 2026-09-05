@@ -8,6 +8,7 @@ Covers two issues found in code review:
     because its documented ``exec(open(...).read())`` usage has no ``__file__``.
 """
 
+import logging
 import pathlib
 import socket
 import sys
@@ -341,7 +342,23 @@ def test_run_still_binds_and_serves():
     assert not thread.is_alive()
 
 
-def test_http_entry_point_delegates_to_the_shared_controller(monkeypatch):
+@pytest.fixture
+def entrypoint_console():
+    """Provide the native console API without leaking GUI logging setup."""
+    logger = logging.getLogger("freecad_ai")
+    previous = logger.handlers[:], logger.level, logger.propagate
+    logger.handlers = []
+    yield types.SimpleNamespace(
+        PrintMessage=lambda message: None,
+        PrintWarning=lambda message: None,
+        PrintError=lambda message: None,
+    )
+    logger.handlers, level, logger.propagate = previous
+    logger.setLevel(level)
+
+
+def test_http_entry_point_delegates_to_the_shared_controller(
+        monkeypatch, entrypoint_console):
     """The script must not build its own server.
 
     A server it owned privately would be invisible to the toolbar toggle,
@@ -351,6 +368,7 @@ def test_http_entry_point_delegates_to_the_shared_controller(monkeypatch):
     source = (repo_root / "mcp_server_http.py").read_text()
 
     fake_freecad = types.ModuleType("FreeCAD")
+    fake_freecad.Console = entrypoint_console
     fake_freecad.ActiveDocument = object()
     fake_freecad.newDocument = lambda name: None
     fake_freecad.ParamGet = lambda path: (_ for _ in ()).throw(
@@ -385,12 +403,14 @@ def test_http_entry_point_delegates_to_the_shared_controller(monkeypatch):
     assert started[0][3] is not None
 
 
-def test_http_entry_point_forwards_the_allowed_hosts_env_var(monkeypatch):
+def test_http_entry_point_forwards_the_allowed_hosts_env_var(
+        monkeypatch, entrypoint_console):
     """MCP_ALLOWED_HOSTS must reach the transport, not just parse cleanly."""
     repo_root = pathlib.Path(__file__).resolve().parents[2]
     source = (repo_root / "mcp_server_http.py").read_text()
 
     fake_freecad = types.ModuleType("FreeCAD")
+    fake_freecad.Console = entrypoint_console
     fake_freecad.ActiveDocument = object()
     fake_freecad.newDocument = lambda name: None
     fake_freecad.ParamGet = lambda path: (_ for _ in ()).throw(

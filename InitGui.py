@@ -20,6 +20,8 @@ class FreeCADAIWorkbench(Gui.Workbench):
 
     def Initialize(self):
         """Called when the workbench is first activated."""
+        from freecad_ai.console_logging import configure_console_logging
+        configure_console_logging(App.Console)
         self.appendToolbar("FreeCAD AI", ["FreeCADAI_OpenChat", "FreeCADAI_OpenSettings",
                                           "FreeCADAI_ToggleMCPServer"])
         self.appendMenu("FreeCAD AI", ["FreeCADAI_OpenChat", "FreeCADAI_OpenSettings",
@@ -224,6 +226,8 @@ class ToggleMCPServerCommand:
         }
 
     def Activated(self, index=0):
+        from freecad_ai.console_logging import configure_console_logging
+        configure_console_logging(App.Console)
         from freecad_ai.i18n import translate
         from freecad_ai.mcp.gui_server import (
             get_server_controller,

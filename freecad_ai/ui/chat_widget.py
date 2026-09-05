@@ -32,7 +32,6 @@ Qt = QtCore.Qt
 Signal = QtCore.Signal
 QThread = QtCore.QThread
 Slot = QtCore.Slot
-QFont = QtGui.QFont
 QTextCursor = QtGui.QTextCursor
 
 from ..config import LOGS_DIR, get_config, prune_oldest_files, save_current_config
@@ -1115,7 +1114,9 @@ class ChatDockWidget(QDockWidget):
         self.chat_display.setAcceptDrops(False)  # Drops handled by ChatDockWidget
         self.chat_display.setOpenExternalLinks(False)
         self.chat_display.setOpenLinks(False)
-        self.chat_display.setFont(QFont("Sans", 10))
+        chat_font = self.chat_display.font()
+        chat_font.setPointSize(10)
+        self.chat_display.setFont(chat_font)
         self.chat_display.setStyleSheet(get_chat_display_stylesheet())
         self.chat_display.anchorClicked.connect(self._handle_anchor_click)
         layout.addWidget(self.chat_display, 1)
@@ -1130,7 +1131,9 @@ class ChatDockWidget(QDockWidget):
         self.input_edit = _ImageAwareTextEdit()
         self.input_edit.setPlaceholderText(translate("ChatDockWidget", "Describe what you want to create..."))
         self.input_edit.setMaximumHeight(80)
-        self.input_edit.setFont(QFont("Sans", 10))
+        input_font = self.input_edit.font()
+        input_font.setPointSize(10)
+        self.input_edit.setFont(input_font)
         colors = _get_theme_colors()
         self.input_edit.setStyleSheet(
             f"QTextEdit {{ background-color: {colors['chat_bg']}; color: {colors['chat_text']}; "
