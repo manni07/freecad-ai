@@ -47,9 +47,12 @@ jobs:
           tests/unit/test_mcp_token.py
           tests/unit/test_mcp_auth.py
           tests/unit/test_install_macos.py
+          tests/unit/test_report_view_native_probe.py
+          tests/unit/test_recovery_native_probe.py
       - name: Check critical Python diagnostics
         run: >-
           python -m ruff check freecad_ai tests/unit
+          scripts/check_report_view_native.py scripts/check_recovery_native.py
           --select E9,F63,F7,F82
       - name: Audit declared PyPI runtime dependency set
         shell: bash
