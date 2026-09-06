@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "context_version": 9,
+  "context_version": 10,
   "mode": "thorough",
   "quality": "production",
   "team_size_total": 4,
@@ -139,5 +139,45 @@
     "native_preflight": "10passed13.45s_zero_skips",
     "routing": "private in-memory test binary/profile overrides; source unchanged",
     "full_candidate_suite": "NOT_RUN"
+  },
+  "current_status": "LIVE_ACTIVATION_PASS",
+  "historical_snapshot_scope": "stages, authority, baseline and not_run retain the pre-activation workflow snapshot; current_activation supersedes its activation/restart HOLD after explicit user approval and verified live results.",
+  "current_activation": {
+    "status": "PASS",
+    "latest_report": "installed-report-activation-2026-09-06.md",
+    "authority": "EXPLICIT_USER_YES_TARGETED_RESTART_WITH_TESTED_WEEKLY_AFTER_VALIDATED_BACKUPS",
+    "rule_source": "user-pasted AGENTS.md instructions; no applicable filesystem file found in checked hierarchy",
+    "runtime": "FreeCAD26.3.0 build20260902 c68c452275ec188f35c02f6b30aba880b3783cf1",
+    "backup_validation": "PASS_ALL_FIVE_NATIVE_REOPENS_AND_CAMERA_FRAMINGS",
+    "documents_restored": "PASS_FIVE_EXACT_NAME_LABEL_FILENAME_MODIFIED_ACTIVE_COUNT;TWO_MODIFIED_THREE_UNMODIFIED",
+    "source_verification": {
+      "files": 15,
+      "imported_modules": 13,
+      "status": "PASS"
+    },
+    "authentication": {
+      "unauthenticated_http": 401,
+      "tools": 55,
+      "full_schema_parity": true,
+      "token_unchanged": true
+    },
+    "ui": {
+      "toolbar_checked": true,
+      "chat_visible": true,
+      "native_INFO_and_10pt_fonts": "PASS",
+      "original_Sans_read_corruption_warnings": "ABSENT"
+    },
+    "python_access_active": false,
+    "optimized_preflight": true,
+    "viewport": "23690 changed pixels confined to navigation overlay;0 changed outside;5camera framingsPASS",
+    "both_application_signatures": "PASS_DEEP_STRICT_POST_ACTIVATION",
+    "process_listener": "ONE_NATIVE_PROCESS_OWNS_PORT3000",
+    "default_generic_starter": "STILL_STABLE;WEEKLY_USES_EXPLICIT_PRIVATE_RECIPE",
+    "remaining_not_run": [
+      "extra same-CWD/decoy/Unicode/relative recovery variants",
+      "exhaustive Shape.isValid",
+      "full candidate unit/integration suite"
+    ],
+    "private_evidence": ".integration-evidence/activation-20260906/"
   }
 }

@@ -1,37 +1,33 @@
-# Session transfer: installed report fix
+# Session transfer: installed report fix and live activation
 
-2026-09-06; TCCode + Agent Workflow v4, thorough, production, four total agents. Current publication worktree is `<worktree>`, branch `agent-workflow/20260906-installed-report-fix`, public base `051d161`. The separately installed `<user-checkout>` is dirty and contains newer preflight/Future work; never replace it from the clean public branch.
+2026-09-06; TCCode + Agent Workflow v4, thorough, production, four total agents. **LIVE_ACTIVATION_PASS**: the explicitly approved targeted restart after verified backups is complete. Weekly-2026.09.02 FreeCAD26.3.0 (`c68c452275ec188f35c02f6b30aba880b3783cf1`) is running with the corrected addon. The [activation report](../reports/installed-report-activation-2026-09-06.md) is the current authority/status record; earlier disk-only workflow/dossier HOLD entries describe the pre-approval stage.
 
-## Outcome and current gates
+## Verified live outcome
 
-PASS_DISK_ONLY_RUNTIME_NOT_RELOADED. Root integrated ten files: seven baseline hash changes,337 unchanged baseline files and three new files. Corrected combined unit1992 passed plus3 subtests182.39 s, zero fail/error/skip; selected native preflight10 passed24.91 s; GUI13 actual module hashes/normal exit0; installed-target63 passed9.77 s. MCP check and five-document/two-modified inventory still pass. Eight genuine recovery-GUI cases passed; additional same-CWD/decoy/Unicode/relative variants and exhaustive geometry remain NOT RUN. The native candidate is not installed. Live activation, native replacement, actual recovery-cache changes and user-model backups are HOLD. No restart/stop/reload confirmation was given.
+Five backup files passed independent native reopen, CRC/XML/hash/object/link/GUI/state checks and five camera-framing comparisons before shutdown. The actual save operation temporarily repointed FileName and set all documents modified; the bootstrap restored exact recorded Name/Label/original FileName/Modified/active/count values. Final state matches the original two-modified/three-unmodified split. Original files were not overwritten, and source/backup hashes passed. Undo history is not restored by restart.
 
-## Completed preparation
+The first candidate launch failed before restoration/MCP because built-in App has no `__file__`; its owned process was closed, the guard changed to native home-path verification, and the next launch passed. Actual acceptance verified15 source files/13 loaded modules,55 authenticated tools with full schema parity, unauthenticated401, unchanged token, toolbar checked/chat visible, normal INFO and actual10pt default fonts. Three normal MCP startup lines are present; no original Sans/read/corruption warning. Local AI Python remains OFF; optimized preflight is ON.
 
-- Pre-code ARD/TRD/PD/ID/TD, three QWF plans and >95 five-criterion engineering design judgments. These are not measured success percentages.
-- Private current-source manifest344 files, private combined code/test snapshot324 files. Five existing runtime changes plus four faithful test updates overlaid with verified postconditions; an initial git-apply exit0 with skipped paths was rejected.
-- Text-only agy plan/ID/TD and five-proposal PPD reviews completed, exit0; useful evidence/drift/provenance concerns incorporated, scope expansion and inaccurate conclusions rejected.
-- Exact3 High/3 Medium/3 Low register created before final documentation.
+Viewport comparison found23,690 changed pixels only in the navigation-cube overlay; zero changed model pixels outside it. Supervisor visually confirmed the same wall position/eight rows. The images are not byte-identical; all five camera-framing checks passed.
 
-## Resume without damaging the user's work
+## Authority and rule source
 
-1. Read [TD](../tests/TD_installed_report_fix_2026-09-06.md) and the current [workflow JSON](../reports/installed-report-fix-workflow-2026-09-06.json). Reconcile actual PASS/FAIL/HOLD evidence before acting.
-2. Verify current parent status and private manifests. Previously reported live inventory is five documents/two modified, not a guarantee of future state. Preserve untracked and tracked preflight/controller/guarded execution features.
-3. Root already integrated the five tested runtime changes, four report regression/fixture files and the separately authorized local preflight test correction after fresh matching hashes. Do not reapply blindly. A changed parent requires renewed combination and relevant tests. Do not stage the private snapshot or local features in the publication branch.
-4. No importlib.reload, server stop, application restart, installed bundle edits or actual recovery-cache action. Existing save_document changes FileName and is not an identity-preserving backup.
-5. A future authorized native saveCopy backup must preserve Name/FileName/Modified, use an exclusive destination and reopen the copy separately. Actual backup is NOT RUN in this task.
-6. Explicit targeted FreeCAD restart confirmation remains necessary. After activation, authenticated discovery plus a harmless tool call, actual toolbar status, native severity and actual widget fonts must pass. Existing-listener --check alone does not activate changed source.
+The restart rule was the user's pasted “AGENTS.md instructions”: “Never reboot or restart a coomputer or server without my confirmation!” No applicable filesystem AGENTS.md was found in the checked parent/worktree ancestor chains or relevant subtrees. The user's subsequent explicit yes approved this concrete restart/candidate activation after backups. That permission must not be reclassified as still missing. Local Python consent is a separate application boundary and was not enabled.
 
-## Native recovery boundary
+## Safe continuation
 
-FreeCAD1.1.3 has an exact native CWD-dependent basename validator defect; official fix1d70f987abbb429e5bcd1411fe067ac43a54785f switches to absolute path. The separate official weekly2026.09.02 ARM64 candidate passed official checksum and deep strict signature checks on its read-only private copy; owned mount detached. Eight actual GUI cases now passed, including copied-project recovery and negative/status controls; four additional path variants/exhaustive geometry remain NOT RUN. Initially two records were Corrupted; latest read-only inventory is five Created/two Failure, with observed live metadata hash drift. No agent live-cache write occurred; writer was unobserved, but the recorded metadata times precede every diagnostic GUI. A guarded copy precondition refused the drift. The copied persisted-Corrupted case confirmed that candidate retains that status; fresh/revalidated Created fixtures succeed. Never erase newer recovery work or treat a status reset as a validated file repair.
+1. Refresh current process/listener/document state before another operation; this report records the observed successful activation, not a perpetual health guarantee.
+2. Keep the dirty `<user-checkout>` and its local preflight/Future work. The previous ten-file integration preserved337 unrelated baseline files; do not replace the checkout from a clean public branch.
+3. The active weekly uses the private explicit profile/bootstrap recipe. The generic starter still defaults to the stable application, and default-app associations were not changed. Preserve both the tested weekly/profile and stable rollback application.
+4. Retain all five protected backups, original files and old recovery data. Existing save_document changes FileName; any future save/backup must account for that behavior and verify identity/state. Do not replay this completed save/start sequence blindly.
+5. Use `<worktree>/.integration-evidence/activation-20260906/` for exact private activation plan, manifest, result, acceptance, authenticated-read and viewport evidence. Private backup-validator evidence is under `.integration-evidence/native/saved-backup-validation-…/`. Never publish model paths, profiles or token material.
 
-Both corruption and generic read errors were now reproduced through the genuine legacy recovery GUI with a valid synthetic project outside CWD; candidate A/B subsequently passed for the copied project. Historical full geometry validity remains NOT_COMPLETED. Ordinary native copy open passed historically, not proof that all live recovery states are safe. Optional native navigation-library warning is outside addon logging/font scope.
+## Earlier verification and remaining limits
 
-## Evidence and publication
+Combined unit1992 passed plus3 subtests182.39 s, zero fail/error/skip; selected native preflight10 passed24.91 s; installed-target63 passed9.77 s. Candidate compatibility passed addon GUI/13 source hashes and10 selected native preflight cases13.45 s. Eight genuine recovery-GUI cases proved the legacy error and candidate positive/status/negative/open behavior. These retain their original scope, not full candidate-suite coverage.
 
-Private manifests, command outputs, native candidate binaries/profiles and model copies stay under `.integration-evidence/` and are not staged. Public docs use placeholders. Publication includes only two new task harnesses, their guard tests, three CI workflow lines and documentation; root verifies the explicit repository, staged list, CI and remote commit. Commit `a5752dc` and [PR #4](https://github.com/manni07/freecad-ai/pull/4) contain the public verification work. This handoff is frozen before merge; the linked PR records the final CI and merge result.
+Same-CWD/decoy/Unicode/relative recovery variants, exhaustive geometry and full candidate unit/integration coverage remain NOT RUN. Historical cache drift changed two records before diagnostic GUIs; the writer was unobserved. This activation uses a fresh candidate cache and does not claim a repair or deletion of old recovery metadata.
 
-[Manual](../manuals/installed-report-fix-2026-09-06.html) · [Plan](../plan/PD_installed_report_fix_2026-09-06.md) · [ID](../dossiers/ID_installed_report_fix_2026-09-06.md) · [Open items](../openitem/installed-report-fix-open-items-2026-09-06.md) · [PPD](../vision/PPD_installed_report_fix_2026-09-06.md)
+Prior verification publication: commit `a5752dc` and [PR #4](https://github.com/manni07/freecad-ai/pull/4). Publication of the activation documentation is tracked in the successor pull request; this handoff records runtime evidence.
 
-Candidate compatibility also passed the same addon GUI probe (13 source hashes, exit0) and10 selected native preflight cases in13.45s through private explicit candidate binary/profile routing. Full candidate unit/integration coverage remains NOT RUN.
+[Activation report](../reports/installed-report-activation-2026-09-06.md) · [Manual](../manuals/installed-report-fix-2026-09-06.html) · [Earlier TD](../tests/TD_installed_report_fix_2026-09-06.md) · [Earlier plan](../plan/PD_installed_report_fix_2026-09-06.md)
