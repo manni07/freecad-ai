@@ -30,6 +30,8 @@ Both corruption and generic read errors were now reproduced through the genuine 
 
 ## Evidence and publication
 
-Private manifests, command outputs, native candidate binaries/profiles and model copies stay under `.integration-evidence/` and are not staged. Public docs use placeholders. Publication includes only two new task harnesses, their guard tests, three CI workflow lines and documentation; root verifies the explicit repository, staged list, CI and remote commit. Publication result is pending root execution.
+Private manifests, command outputs, native candidate binaries/profiles and model copies stay under `.integration-evidence/` and are not staged. Public docs use placeholders. Publication includes only two new task harnesses, their guard tests, three CI workflow lines and documentation; root verifies the explicit repository, staged list, CI and remote commit. Commit `a5752dc` and [PR #4](https://github.com/manni07/freecad-ai/pull/4) contain the public verification work. This handoff is frozen before merge; the linked PR records the final CI and merge result.
 
 [Manual](../manuals/installed-report-fix-2026-09-06.html) · [Plan](../plan/PD_installed_report_fix_2026-09-06.md) · [ID](../dossiers/ID_installed_report_fix_2026-09-06.md) · [Open items](../openitem/installed-report-fix-open-items-2026-09-06.md) · [PPD](../vision/PPD_installed_report_fix_2026-09-06.md)
+
+Candidate compatibility also passed the same addon GUI probe (13 source hashes, exit0) and10 selected native preflight cases in13.45s through private explicit candidate binary/profile routing. Full candidate unit/integration coverage remains NOT RUN.

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "context_version": 8,
+  "context_version": 9,
   "mode": "thorough",
   "quality": "production",
   "team_size_total": 4,
@@ -75,7 +75,7 @@
     {
       "id": 9,
       "name": "docs/performance/publication",
-      "status": "DOCS_VERIFIED_PUBLICATION_PENDING_ROOT"
+      "status": "DOCS_VERIFIED_PR_CREATED_MERGE_STATUS_IN_LINKED_PR"
     }
   ],
   "authority": {
@@ -127,5 +127,17 @@
     "full SDK/21-wall benchmark",
     "live activation/restart",
     "native candidate installation"
-  ]
+  ],
+  "publication": {
+    "pull_request": "https://github.com/manni07/freecad-ai/pull/4",
+    "implementation_commit": "a5752dc3e44a5c4971b88d3eedebd4b50e8e28ab",
+    "scope": "native probes,18guardtests,CI,documentation;local preflight test correction excluded",
+    "merge_status": "See linked PR; this report is frozen before merge."
+  },
+  "candidate_compatibility": {
+    "addon_gui": "PASS_EXIT0_13_COMBINED_SOURCE_HASHES",
+    "native_preflight": "10passed13.45s_zero_skips",
+    "routing": "private in-memory test binary/profile overrides; source unchanged",
+    "full_candidate_suite": "NOT_RUN"
+  }
 }
