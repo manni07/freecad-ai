@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "context_version": 8,
+  "mode": "thorough",
+  "quality": "production",
+  "team_size_total": 4,
+  "branch": "agent-workflow/20260906-installed-report-fix",
+  "public_base": "051d161",
+  "current_stage": 9,
+  "agents": {
+    "root": "snapshot/integration/publication",
+    "workflow_orchestrator": "plans/gates/docs",
+    "logging_fix": "combined tests/native GUI",
+    "recovery_review": "native candidate/independent review"
+  },
+  "stages": [
+    {
+      "id": 1,
+      "name": "foundation/review",
+      "status": "PASS_PRECODE",
+      "evidence": "successor ARD/TRD/PD/ID/TD and source inspection; root/worker scope corroborated"
+    },
+    {
+      "id": 2,
+      "name": "implementation simulation",
+      "status": "PASS_DESIGN_ONLY",
+      "scores": [
+        98,
+        98,
+        97,
+        99,
+        98
+      ]
+    },
+    {
+      "id": 3,
+      "name": "private combination/candidate preparation",
+      "status": "PASS_PRIVATE_COMBINATION_AND_CANDIDATE_ARTIFACT"
+    },
+    {
+      "id": 4,
+      "name": "test strategy refinement",
+      "status": "PASS_INTENT_AND_DIAGNOSTIC_REFINEMENTS"
+    },
+    {
+      "id": 5,
+      "name": "test simulation",
+      "status": "PASS_DESIGN_ONLY",
+      "scores": [
+        99,
+        98,
+        97,
+        99,
+        98
+      ]
+    },
+    {
+      "id": 6,
+      "name": "security/unit",
+      "status": "PASS_CORRECTED_COMBINED",
+      "evidence": "1992passed+3subtests182.39s;JUnit1995zero failure/error/skip;18guards0.29s;criticalRuffPASS"
+    },
+    {
+      "id": 7,
+      "name": "integration",
+      "status": "PASS_DISK_ONLY_RUNTIME_NOT_RELOADED",
+      "evidence": "10files;337unchanged+7expectedbaselinechanges+3new;10native24.91s;63installedtarget9.77s;MCPcheckPASS"
+    },
+    {
+      "id": 8,
+      "name": "isolated native GUI/recovery",
+      "status": "PASS_ADDON_GUI_AND_8_RECOVERY_CASES_EXTRA_PATHS_NOT_RUN",
+      "evidence": "actualReportOutputrequired;8statusPASS+exit0;legacybotherrors/candidatesamecopyneither;status+invalidcontrols;accept163objects64links"
+    },
+    {
+      "id": 9,
+      "name": "docs/performance/publication",
+      "status": "DOCS_VERIFIED_PUBLICATION_PENDING_ROOT"
+    }
+  ],
+  "authority": {
+    "live_backup_or_model_write": "NOT_AUTHORIZED",
+    "restart_stop_reload": "NOT_AUTHORIZED",
+    "signed_installed_app_change": "NOT_AUTHORIZED",
+    "native_candidate_acquisition": "APPROVED_PRIVATE_READONLY_MOUNT",
+    "native_candidate_execution": "APPROVED_OWNED_ISOLATED_GENUINE_GUI_AFTER_PROVENANCE",
+    "root_ten_file_disk_integration": "COMPLETED_HASH_VERIFIED"
+  },
+  "baseline": {
+    "parent_changed_since_previous_analysis": true,
+    "parent_preflight_changes": "PRESERVE",
+    "root_private_baseline_files": 344,
+    "root_private_combined_files": 324,
+    "live_documents_reported": 5,
+    "live_modified_documents_reported": 2,
+    "durable_integration_files": 10,
+    "durable_runtime_files": 5,
+    "durable_regression_files": 4,
+    "local_preflight_test_correction_files": 1,
+    "local_preflight_test_publication": "EXCLUDED_UNPUBLISHED_PARENT_FEATURE",
+    "candidate_signature": "PASS_DEEP_STRICT_ARM64_OFFICIAL_CHECKSUM_READONLY_COPY",
+    "unchanged_parent_baseline_files": 337,
+    "expected_changed_parent_baseline_files": 7,
+    "new_parent_files": 3,
+    "initial_recovery_status_inventory": {
+      "Corrupted": 2,
+      "Created": 3,
+      "Failure": 2
+    },
+    "latest_recovery_status_inventory": {
+      "Created": 5,
+      "Failure": 2
+    },
+    "live_cache_hash_preservation": "NOT_PASS_OBSERVED_EXTERNAL_DRIFT_CAUSE_UNVERIFIED",
+    "guarded_live_cache_copy": "REFUSED_PRECONDITION_HASH_DRIFT_BEFORE_COPY",
+    "candidate_runtime_version": "26.3.0 build20260902 c68c452275ec188f35c02f6b30aba880b3783cf1",
+    "cache_drift_chronology": "2metadata mtimes08:23:18/19 before diagnosticGUI08:24 and recovery08:31; writerunobserved"
+  },
+  "agy": "PLAN_ID_TD_AND_PPD_TEXT_ONLY_REVIEW_RC0_INCORPORATED",
+  "risk_register": "../openitem/installed-report-fix-open-items-2026-09-06.md",
+  "not_run": [
+    "same-CWD candidate variant",
+    "decoy basename",
+    "Unicode/spaced source path",
+    "relative source path",
+    "exhaustive Shape.isValid",
+    "full SDK/21-wall benchmark",
+    "live activation/restart",
+    "native candidate installation"
+  ]
+}
