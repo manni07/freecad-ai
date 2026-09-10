@@ -49,6 +49,16 @@ jobs:
           tests/unit/test_install_macos.py
           tests/unit/test_report_view_native_probe.py
           tests/unit/test_recovery_native_probe.py
+          tests/unit/test_fork_profile_security.py
+          tests/unit/test_config.py
+          tests/unit/test_create_client.py
+          tests/unit/test_profiles.py
+          tests/unit/test_profiles_migration.py
+          tests/unit/test_profile_selector.py
+          tests/unit/test_per_profile_capabilities.py
+          tests/unit/test_utility_call_sites.py
+          tests/unit/test_utility_dropdowns.py
+          tests/unit/test_settings_dialog_geometry.py
       - name: Check critical Python diagnostics
         run: >-
           python -m ruff check freecad_ai tests/unit

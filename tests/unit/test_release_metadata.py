@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_XML = ROOT / "package.xml"
 PYPROJECT = ROOT / "pyproject.toml"
 RUNTIME_POLICY = ROOT / "security" / "supported-runtime.json"
-EXPECTED_ADDON_VERSION = "0.23.1-alpha"
-EXPECTED_PYPROJECT_VERSION = "0.23.1a0"
+EXPECTED_ADDON_VERSION = "0.24.0-alpha"
+EXPECTED_PYPROJECT_VERSION = "0.24.0a0"
 
 
 def _project_metadata():

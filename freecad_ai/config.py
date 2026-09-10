@@ -26,12 +26,13 @@ where an aborted/buggy prior migration left duplicate data behind.
 
 import datetime
 import json
+import logging
 import os
 import shutil
 import stat
 import sys
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 
 from .secure_storage import (
     atomic_write_bytes,
@@ -39,6 +40,8 @@ from .secure_storage import (
     harden_managed_paths,
 )
 
+
+logger = logging.getLogger(__name__)
 
 # Marker filename inside the active config dir. Its presence signals that
 # this version of the workbench has already migrated into this target.
@@ -380,10 +383,28 @@ PROVIDER_PRESETS = {
 
 @dataclass
 class ProviderConfig:
+    """One named connection: vendor, endpoint, credential, model, params.
+
+    ``name`` is the *vendor* key into PROVIDER_PRESETS. A profile's own
+    label is its key in ``AppConfig.profiles``, not a field here.
+    """
     name: str = "anthropic"
     api_key: str = ""
     base_url: str = "https://api.anthropic.com"
     model: str = "claude-sonnet-4-6"
+    params: dict = field(default_factory=dict)
+    # Capabilities are a property of *this* connection's model, so they
+    # live here rather than on AppConfig. Test Connection probes whichever
+    # profile is on screen; global flags meant probing a reranker profile
+    # rewrote the chat model's capabilities — and tools_detected=False
+    # silently disables tool calling for chat entirely.
+    vision_detected: bool | None = None   # None=not tested, True/False=probe
+    vision_override: bool | None = None   # user manual override, wins
+    tools_detected: bool | None = None    # Ollama /api/show "tools"
+    thinking_detected: bool | None = None  # Ollama /api/show "thinking"
+
+    CAPABILITY_FIELDS = ("vision_detected", "vision_override",
+                         "tools_detected", "thinking_detected")
 
     def apply_preset(self, provider_name: str):
         """Apply a provider preset, updating base_url and model to defaults."""
@@ -393,16 +414,47 @@ class ProviderConfig:
         self.model = preset.get("default_model", self.model)
 
 
+def _profile_from_dict(raw) -> "ProviderConfig":
+    """Build a ProviderConfig from JSON, ignoring anything it cannot take.
+
+    Unknown keys are dropped rather than raised on, so a config written by
+    a later version stays loadable by this one. Mirrors how AppConfig
+    filters its own unknown keys in from_dict.
+    """
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Profile entry is %s, not an object — using defaults for it. "
+            "Check the \"profiles\" section of config.json.",
+            type(raw).__name__)
+        return ProviderConfig()
+    known = {f.name for f in fields(ProviderConfig)}
+    unknown = set(raw) - known
+    if unknown:
+        logger.warning(
+            "Ignoring unrecognised profile field(s) %s — most likely written "
+            "by a newer version of the workbench.",
+            ", ".join(sorted(unknown)))
+    return ProviderConfig(**{k: v for k, v in raw.items() if k in known})
+
+
 @dataclass
 class AppConfig:
-    provider: ProviderConfig = field(default_factory=ProviderConfig)
+    profiles: dict = field(default_factory=dict)      # label -> ProviderConfig
+    active_profile: str = ""                          # label chat uses
+    provider_keys: dict = field(default_factory=dict) # vendor -> default api key
+    utility_profiles: dict = field(default_factory=dict)  # utility -> label
     mode: str = "plan"  # "plan" or "act"
     max_tokens: int = 4096
     context_window: int = 20000  # tokens — compaction triggers above this
     temperature: float = 0.3
     model_params: dict = field(default_factory=dict)
-    # Per-model parameter overrides, keyed by model name:
-    # {"gemma4:27b": {"temperature": 1.0, "top_p": 0.95, "top_k": 64}, ...}
+    # LEGACY, unread since connection profiles: per-model parameter
+    # overrides keyed by model name,
+    # {"gemma4:27b": {"temperature": 1.0, "top_p": 0.95, "top_k": 64}, ...}.
+    # Sampling parameters now live on the profile (ProviderConfig.params);
+    # migration copies this dict's entry for the migrated model into it
+    # once. Kept in the JSON so a downgrade still finds it, and removed one
+    # release on — like provider/rerank_llm_*/rerank_params.
     auto_execute: bool = False
     max_retries: int = 3
     # Max agentic tool-loop turns per user message. 0 = endless (the Stop
@@ -423,9 +475,10 @@ class AppConfig:
     # Each entry: {"name": str, "command": str, "args": list, "env": dict, "enabled": bool}
     # Address the addon listens on when acting AS an MCP server (the toolbar
     # toggle and mcp_server_http.py). Host is deliberately unrestricted,
-    # including non-loopback: the server has no authentication (issue #59), so
-    # the Settings dialog warns about the exposure rather than pretending a
-    # restricted field made it safe. MCP_HOST / MCP_PORT override both.
+    # including non-loopback: the server has no authentication unless a
+    # bearer token is configured below (issue #59), so the Settings dialog
+    # warns about the exposure rather than pretending a restricted field made
+    # it safe. MCP_HOST / MCP_PORT override both.
     mcp_server_host: str = "127.0.0.1"
     mcp_server_port: int = 3000
     # Host headers the server answers to. Empty means "let the transport pick
@@ -455,14 +508,12 @@ class AppConfig:
     system_prompt_override: str = ""  # empty = use default; non-empty = use as-is
     # Canonical project-root keyed, fingerprint-scoped instruction decisions.
     project_instruction_trust: dict = field(default_factory=dict)
-    vision_detected: bool | None = None   # None=not tested, True/False=probe result
-    vision_override: bool | None = None   # user manual override, takes precedence
-    # Tool-calling capability (Ollama /api/show "tools"). None=untested or
-    # non-Ollama (in which case provider.supports_tools is the source of truth).
-    # False explicitly = the model doesn't support tools (e.g. embedding/reranker
-    # picked as main model) → suppress tools array in chat sends.
+    # LEGACY, unread since capabilities moved onto the profile. Kept in the
+    # JSON for one release so a downgrade still finds them, and mirrored
+    # from the active profile on save — like the ``provider`` mirror.
+    vision_detected: bool | None = None
+    vision_override: bool | None = None
     tools_detected: bool | None = None
-    # Thinking capability (Ollama /api/show "thinking"). Diagnostic-only today.
     thinking_detected: bool | None = None
 
     # Tool reranking — when active, only the top-N most relevant tools
@@ -519,13 +570,44 @@ class AppConfig:
     # is naturally bounded by the number of distinct documents ever edited.
     max_backups: int = 0
 
+    def __post_init__(self):
+        self._ensure_profile()
+
+    def _ensure_profile(self) -> None:
+        """Guarantee at least one profile and a valid active label.
+
+        A config must never leave the dialog unusable, so an empty or
+        dangling ``active_profile`` resolves rather than raising. Cheap
+        and idempotent, so the ``provider`` property can call it on every
+        access and never hand back a KeyError.
+        """
+        if not self.profiles:
+            default = ProviderConfig()
+            self.profiles = {default.name: default}
+            self.active_profile = default.name
+        if self.active_profile not in self.profiles:
+            self.active_profile = next(iter(self.profiles))
+
+    @property
+    def provider(self) -> ProviderConfig:
+        """The active profile.
+
+        Every ``cfg.provider.*`` read and write in the codebase means "the
+        active chat connection", so they all keep working through here.
+        Reads AND writes: the FreeCAD parameter-store bridge assigns to
+        ``cfg.provider.model`` etc., and those land in the stored profile.
+        """
+        self._ensure_profile()
+        return self.profiles[self.active_profile]
+
     @property
     def supports_vision(self) -> bool:
-        """Whether the current LLM supports vision (images in content blocks)."""
-        if self.vision_override is not None:
-            return self.vision_override
-        if self.vision_detected is not None:
-            return self.vision_detected
+        """Whether the active profile's LLM supports vision."""
+        profile = self.provider
+        if profile.vision_override is not None:
+            return profile.vision_override
+        if profile.vision_detected is not None:
+            return profile.vision_detected
         return False
 
     @property
@@ -537,22 +619,133 @@ class AppConfig:
         as the main model on a provider that the static table marks as
         tool-capable. Otherwise fall back to the provider-wide flag.
         """
-        if self.tools_detected is not None:
-            return self.tools_detected
+        profile = self.provider
+        if profile.tools_detected is not None:
+            return profile.tools_detected
         from .llm.providers import supports_tools as _provider_supports_tools
-        return _provider_supports_tools(self.provider.name)
+        return _provider_supports_tools(profile.name)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        """Serialise, including a legacy ``provider`` mirror.
+
+        ``provider`` is a property now, so asdict() skips it. We write it
+        anyway for one release: a user who installs this version and then
+        downgrades gets their connection back instead of a blank dialog.
+        Drop this mirror — and the rerank_llm_*/rerank_params fields —
+        one release after profiles ship.
+        """
+        data = asdict(self)
+        data["provider"] = {
+            "name": self.provider.name,
+            "api_key": self.provider.api_key,
+            "base_url": self.provider.base_url,
+            "model": self.provider.model,
+        }
+        for name in ProviderConfig.CAPABILITY_FIELDS:
+            data[name] = getattr(self.provider, name)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "AppConfig":
-        provider_data = data.pop("provider", {})
-        provider = ProviderConfig(**provider_data)
-        # Filter out unknown keys to avoid TypeError
-        known = {f.name for f in cls.__dataclass_fields__.values()} - {"provider"}
+        data = dict(data)  # never mutate the caller's parsed JSON
+        legacy_provider = data.pop("provider", None)
+        if not isinstance(legacy_provider, dict):
+            # Malformed legacy "provider" (e.g. a bad config.json hand-edit):
+            # treat as absent rather than raising deep in the migration path.
+            legacy_provider = None
+
+        raw_profiles = data.pop("profiles", None)
+        if not isinstance(raw_profiles, dict):
+            # Malformed "profiles" (e.g. a list from a bad hand-edit):
+            # treat as absent so the flat-provider migration path runs.
+            raw_profiles = None
+        # A profile entry that ProviderConfig(**p) cannot take used to
+        # raise TypeError, which load_config caught by discarding the whole
+        # config and returning bare defaults — losing every other setting
+        # the user had, and letting the next save write the loss to disk.
+        # Two shapes do it: a value that is not a mapping at all (the
+        # hand-edit {"profiles": {"a": "x"}}), and a mapping carrying a
+        # field this version does not know, which is what a profile
+        # written by a *newer* version looks like. Both degrade in place
+        # now, like the other malformed shapes on this path.
+        profiles = {
+            label: _profile_from_dict(p)
+            for label, p in (raw_profiles or {}).items()
+        }
+
+        known = {f.name for f in cls.__dataclass_fields__.values()} - {"profiles"}
         filtered = {k: v for k, v in data.items() if k in known}
-        return cls(provider=provider, **filtered)
+        cfg = cls(profiles=profiles, **filtered)
+
+        if not raw_profiles:
+            cls._migrate_flat_provider(cfg, legacy_provider or {}, data)
+        cls._adopt_legacy_capabilities(cfg, data)
+        return cfg
+
+    @staticmethod
+    def _adopt_legacy_capabilities(cfg: "AppConfig", data: dict) -> None:
+        """Move top-level capability flags onto the profile chat runs on.
+
+        Runs for both shapes: a pre-profiles config (the flags describe the
+        one connection there was) and a profiles-era config written before
+        the flags moved. Only the active profile can be spoken for — what a
+        probe found about the chat model says nothing about a reranker
+        profile — and a profile that already carries its own value is never
+        overwritten, so this is idempotent across loads.
+        """
+        cfg._ensure_profile()
+        profile = cfg.profiles[cfg.active_profile]
+        for name in ProviderConfig.CAPABILITY_FIELDS:
+            if getattr(profile, name) is None and data.get(name) is not None:
+                setattr(profile, name, data[name])
+
+    @staticmethod
+    def _migrate_flat_provider(cfg: "AppConfig", legacy: dict, data: dict) -> None:
+        """Turn a pre-profiles config into one or two profiles.
+
+        Only runs when the JSON carries no ``profiles`` key, so it is a
+        one-time upgrade rather than something that fights an already
+        migrated file on every load.
+        """
+        main = ProviderConfig(**{
+            k: v for k, v in legacy.items()
+            if k in {"name", "api_key", "base_url", "model"}
+        })
+        main.params = dict(cfg.model_params.get(main.model, {}))
+        cfg.profiles = {main.name: main}
+        cfg.active_profile = main.name
+        # Deliberately no provider_keys seeding here. The key is already on
+        # the profile above, where the dialog can show and clear it;
+        # copying it into provider_keys as well created a credential no
+        # widget could reach, so clearing the API Key field to rotate a
+        # leaked key left the old one on disk and still being sent.
+        # provider_keys stays a hand-written per-vendor default that
+        # create_client falls back to — never auto-populated.
+
+        # The old reranker override inherited each empty field from the
+        # main provider (the pre-profiles reranker builder in chat_widget).
+        # Bake those `or` fallbacks into a standalone profile.
+        if data.get("rerank_llm_model"):
+            rerank_params = data.get("rerank_params")
+            if not isinstance(rerank_params, dict):
+                # Malformed "rerank_params" (e.g. a string): no override.
+                rerank_params = {}
+            if not rerank_params:
+                # Configs written before rerank_params existed (<= v0.16.4)
+                # kept the override reranker's params in the shared
+                # model_params dict, keyed by its model. load_config used
+                # to seed them afterwards, which is too late for this
+                # migration and lands in a field nothing reads any more.
+                rerank_params = cfg.model_params.get(
+                    data["rerank_llm_model"], {})
+            cfg.profiles["rerank"] = ProviderConfig(
+                name=data.get("rerank_llm_provider_name") or main.name,
+                base_url=data.get("rerank_llm_base_url") or main.base_url,
+                api_key=data.get("rerank_llm_api_key") or main.api_key,
+                model=data["rerank_llm_model"],
+                params=dict(rerank_params),
+            )
+            cfg.utility_profiles["rerank"] = "rerank"
 
 
 def _ensure_dirs():
@@ -624,7 +817,8 @@ def _restore_config_bytes(original: bytes | None) -> None:
 def _migrate_config_secrets(cfg: AppConfig,
                             original_config: bytes | None) -> AppConfig:
     """Commit literal-secret migration only after all durable read-backs."""
-    if not (_is_literal_secret(cfg.provider.api_key)
+    if not (any(_is_literal_secret(profile.api_key)
+                for profile in cfg.profiles.values())
             or _is_literal_secret(cfg.rerank_llm_api_key)):
         _write_to_param_store(cfg)
         return cfg
@@ -641,13 +835,17 @@ def _migrate_config_secrets(cfg: AppConfig,
     } if os.path.isdir(SECRETS_DIR) else set()
     created_secret_paths = set()
     try:
-        candidate.provider.api_key = secure_storage.migrate_literal_secret(
-            candidate.provider.api_key, SECRETS_DIR, "provider-api-key")
-        if (_is_literal_secret(cfg.provider.api_key)
-                and candidate.provider.api_key.startswith("file:")):
-            path = candidate.provider.api_key.removeprefix("file:")
-            if path not in existing_secret_paths:
-                created_secret_paths.add(path)
+        for index, (label, profile) in enumerate(candidate.profiles.items()):
+            original_key = profile.api_key
+            stem = ("provider-api-key" if label == candidate.active_profile
+                    else f"profile-{index}-api-key")
+            profile.api_key = secure_storage.migrate_literal_secret(
+                original_key, SECRETS_DIR, stem)
+            if (_is_literal_secret(original_key)
+                    and profile.api_key.startswith("file:")):
+                path = profile.api_key.removeprefix("file:")
+                if path not in existing_secret_paths:
+                    created_secret_paths.add(path)
         candidate.rerank_llm_api_key = secure_storage.migrate_literal_secret(
             candidate.rerank_llm_api_key, SECRETS_DIR, "reranker-api-key")
         if (_is_literal_secret(cfg.rerank_llm_api_key)
@@ -716,12 +914,9 @@ def load_config() -> AppConfig:
             cfg = AppConfig.from_dict(data)
         except (json.JSONDecodeError, TypeError, KeyError):
             pass
-    # Migrate pre-namespace configs: the reranker override model's params used
-    # to live in the shared model_params dict. Seed the new rerank_params slot
-    # from there so override users don't silently lose their params on upgrade.
-    # Idempotent — only fills an empty rerank_params (issue #30 follow-up).
-    if cfg.rerank_llm_model and not cfg.rerank_params:
-        cfg.rerank_params = dict(cfg.model_params.get(cfg.rerank_llm_model, {}))
+    # (The pre-namespace rerank_params seeding that used to live here now
+    # runs inside _migrate_flat_provider, where the profile that actually
+    # reads those params is built. rerank_params itself is legacy.)
     _apply_param_store_overrides(cfg)
     return _migrate_config_secrets(cfg, original_config)
 
