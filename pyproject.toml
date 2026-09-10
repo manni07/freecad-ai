@@ -1,6 +1,6 @@
 [project]
 name = "freecad-ai"
-version = "0.23.1a0"
+version = "0.24.0a0"
 description = "AI assistant workbench for FreeCAD"
 requires-python = ">=3.11"
 dependencies = []

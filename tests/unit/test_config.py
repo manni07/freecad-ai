@@ -679,9 +679,10 @@ class TestSaveLoad:
 
     def test_load_seeds_rerank_params_from_legacy_override_slot(self, tmp_config_dir):
         """Migration: pre-namespace configs stored the reranker override
-        model's params inside the shared model_params dict. On load, seed the
-        new rerank_params namespace from that slot so override users don't
-        silently lose their reranker params (issue #30 follow-up)."""
+        model's params inside the shared model_params dict. Those params must
+        still reach the reranker so override users don't silently lose them
+        (issue #30 follow-up). They now land on the "rerank" profile, which is
+        what create_client reads; the rerank_params field itself is legacy."""
         import freecad_ai.config as config_mod
         os.makedirs(os.path.dirname(config_mod.CONFIG_FILE), exist_ok=True)
         with open(config_mod.CONFIG_FILE, "w") as f:
@@ -691,7 +692,8 @@ class TestSaveLoad:
                 "model_params": {"rr-model": {"temperature": 0.0, "top_k": 20}},
             }, f)
         c = load_config()
-        assert c.rerank_params == {"temperature": 0.0, "top_k": 20}
+        assert c.profiles["rerank"].params == {"temperature": 0.0, "top_k": 20}
+        assert c.utility_profiles["rerank"] == "rerank"
 
     def test_load_does_not_seed_rerank_params_in_inherit_mode(self, tmp_config_dir):
         """No reranker override model → nothing to migrate; rerank_params
@@ -1770,3 +1772,25 @@ def test_mcp_server_allowed_hosts_defaults_to_empty():
     """
     from freecad_ai.config import AppConfig
     assert AppConfig().mcp_server_allowed_hosts == []
+
+
+def test_mcp_server_token_file_defaults_to_managed_authentication():
+    """An empty path selects the managed token; it must not disable auth."""
+    from freecad_ai.config import AppConfig
+    from freecad_ai.mcp.gui_server import resolve_token_file
+
+    cfg = AppConfig()
+    assert cfg.mcp_server_token_file == ""
+    path, managed = resolve_token_file(cfg)
+    assert managed is True
+    assert path.endswith("mcp_server.token")
+
+
+def test_mcp_server_token_path_roundtrip_ignores_upstream_inline_token():
+    from freecad_ai.config import AppConfig
+    cfg = AppConfig(mcp_server_token_file="/fixture/private.token")
+    data = cfg.to_dict()
+    data["mcp_server_auth_token"] = "upstream-inline-test-secret"
+    restored = AppConfig.from_dict(data)
+    assert restored.mcp_server_token_file == "/fixture/private.token"
+    assert "mcp_server_auth_token" not in restored.to_dict()

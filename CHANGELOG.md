@@ -7,6 +7,125 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fork integration
+
+- Merge upstream v0.24.0-alpha into `manni07/freecad-ai`, retaining the fork's
+  mandatory file-backed MCP authentication instead of upstream's optional
+  inline-token mode described below. The Settings dialog reflects that policy.
+- Extend the fork's transactional API-key migration to inactive and utility
+  profiles, preserving profile selection and rolling back all newly created
+  key files if any migration step fails.
+- Account for the actual scroll content width in Settings. Qt can cap the
+  scroll area's size hint on macOS, clipping the profile Delete button.
+
+## [0.24.0-alpha] - 2026-09-07
+
+### Added
+
+- **Connection profiles.** LLM connection settings are now named profiles.
+  Define as many as you like — `ollama-local` and `ollama-remote` can
+  coexist with different URLs and keys — and switch between them from the
+  Settings dialog without losing anything.
+- Saving a profile with an empty **Base URL** now asks first, naming the
+  profiles concerned. Such a profile fails with a bare connection error at
+  request time, and profile resolution deliberately does not substitute the
+  provider's preset URL behind your back — so the dialog says so instead.
+- **Per-utility models.** Context compaction, skill evaluation, tool
+  optimisation and tool reranking each choose a profile, or inherit the
+  active one. Run chat on a large cloud model and the throwaway work on a
+  cheap or local one.
+- A **Use this profile for chat** checkbox in the Settings dialog says
+  which profile chat runs on, and the profile dropdown marks it
+  `(active)`. Selecting a profile in the dropdown only opens it for
+  editing — browsing what your profiles hold never re-points chat.
+
+- **Optional bearer token for the MCP server** — a new
+  **AI Settings → MCP Servers → Bearer token** field, with a **Generate**
+  button, and an `MCP_AUTH_TOKEN` environment variable (env wins). When set,
+  every request to the server must carry `Authorization: Bearer <token>`;
+  a missing or wrong one is answered `401` with a `WWW-Authenticate: Bearer`
+  challenge, so a client knows to present a credential rather than that it is
+  barred outright. Empty (the default) leaves the server unauthenticated,
+  exactly as before, so nothing changes for an existing setup. Until now the
+  `Host`-header allowlist was the only thing limiting who could reach a
+  non-loopback server, and it cannot tell one client on that host from
+  another. Both start-up routes read the token — the toolbar toggle and
+  `mcp_server_http.py`. The token must be ASCII: it is compared with
+  `hmac.compare_digest()`, which raises on a non-ASCII operand, so a
+  non-ASCII token is refused when the server starts rather than crashing the
+  handler thread on every request. Contributed by @AmirF194 in
+  [#73](https://github.com/ghbalf/freecad-ai/pull/73), closing
+  [#59](https://github.com/ghbalf/freecad-ai/issues/59).
+
+  Host, port, allowed hosts and the token are all read when the server
+  starts, so changing any of them does not reconfigure a server that is
+  already running — stop and restart it.
+
+### Changed
+
+- The reranker's four-field provider override is replaced by a profile.
+  Existing overrides migrate automatically into a profile named `rerank`.
+- The reranker's **Test reranker** button now probes whichever profile
+  reranking is set to (or the active profile, if left on inherit), instead
+  of its own four fields.
+- **Test Connection** and **Test Reranker** now name the profile they
+  probed. Both deliberately test a profile that need not be the active one
+  — Test Connection tests whichever profile is open in the dialog, so you
+  can verify a new one before switching chat to it, and Test Reranker
+  follows the tool-reranking dropdown — and the status line previously gave
+  no way to tell that apart from a failure of the profile you chat with.
+  It now reads `Testing "ollama-local"...`, then
+  `"ollama-local": Connected! ...` or `"ollama-local": Failed: ...`. The
+  name is captured when the probe starts, so switching profiles while one
+  is in flight cannot mislabel the result.
+- The **Model supports vision** checkbox moved out of **Behavior** and into
+  the **LLM Provider** group, directly under the model it describes. It is
+  a property of one profile's model, not a global setting, and now reads
+  and writes the profile currently open in the dialog.
+
+### Fixed
+
+- Detected model capabilities now belong to the profile they were detected
+  on. Test Connection probes whichever profile is open in the dialog, but
+  vision, tool-calling and thinking support were recorded once for the
+  whole configuration — so testing a reranking or utility profile
+  overwrote the chat model's capabilities, and saved them to disk
+  immediately. The sharpest edge was tool support: probe an embedding
+  model on any profile and the answer "no tools" applied to chat, which
+  then stopped sending tools altogether. Each profile now carries its own
+  detection, retyping a profile's provider or model clears only that
+  profile's now-stale results, and a probe result lands in the dialog's
+  working copy like every other profile field — reaching `config.json` on
+  OK rather than the moment the probe returns. Existing settings migrate
+  onto the active profile on first load, and are still written to the top
+  level of `config.json` so an older version reads them.
+
+- Switching between profiles in the Settings dialog is lossless (#75).
+  Each profile keeps its own base URL, key, model and parameters, so
+  browsing to another profile and back leaves your edits intact and no
+  profile can overwrite another's settings. Pointing a profile at a
+  *different vendor* still loads that vendor's preset URL and model, as it
+  always has — that is an explicit "point this profile elsewhere".
+- Cancelling the Settings dialog now discards profile changes. Adding,
+  renaming, deleting or editing a profile previously took effect
+  immediately, and Test Connection could flush the change to disk before
+  you ever pressed OK.
+- Sampling parameters edited in Settings now take effect, including
+  **Remove**. For a configuration carried over from an earlier version,
+  edits were silently discarded and removed rows came back: parameters
+  lived in two places at once, a per-model dict in `config.json` and the
+  profile, and the dialog could only reach one of them. The profile is now
+  the only source; the per-model dict is left in `config.json`, unread.
+- Clearing a profile's API key now actually clears it. Upgrading copied
+  the key into a second, per-vendor slot that no part of the dialog could
+  edit, so a key cleared to rotate a leaked credential stayed on disk and
+  kept being sent — with Test Connection reporting OK. That slot is no
+  longer written on upgrade; it remains available as a hand-written
+  per-vendor default in `config.json`.
+- Test Connection now succeeds for a profile that leaves its API key blank
+  to inherit the vendor-wide default, matching what normal chat use
+  already did.
+
 ## [0.23.1-alpha] - 2026-08-31
 
 ### Fixed
